@@ -21,6 +21,16 @@ return [
         'ssl_verify' => $env('DB_SSL_VERIFY') !== '0',
     ],
     'public_url' => $env('PUBLIC_URL', ''),
+    // Space DigitalOcean pour les photos (sinon elles vont dans uploads/, effacé à chaque déploiement).
+    // SPACES_ENDPOINT ne sert qu'aux tests (ex. MinIO) ; SPACES_CDN_URL par défaut : CDN du Space.
+    'spaces' => [
+        'key' => $env('SPACES_KEY'),
+        'secret' => $env('SPACES_SECRET'),
+        'bucket' => $env('SPACES_BUCKET'),
+        'region' => $env('SPACES_REGION', 'fra1'),
+        'endpoint' => $env('SPACES_ENDPOINT'),
+        'cdn_url' => $env('SPACES_CDN_URL'),
+    ],
     'anthropic_api_key' => $env('ANTHROPIC_API_KEY', ''),
     'seed_users' => [
         ['id' => 'u-admin', 'name' => 'Admin Selix', 'email' => 'admin@selix.ma', 'phone' => '+212600000000', 'role' => 'admin', 'password' => $env('SEED_ADMIN_PASSWORD', bin2hex(random_bytes(16)))],

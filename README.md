@@ -33,6 +33,19 @@ SITE_ADDRESS=api.selix.io docker compose up -d --build   # ou <ip>.sslip.io sans
 Mise à jour : `git pull && docker compose up -d --build`. Caddy obtient le certificat HTTPS
 tout seul ; les photos sont dans le volume Docker `uploads`.
 
+## Photos : Space DigitalOcean
+
+Le disque des conteneurs App Platform est effacé à chaque déploiement : quand `SPACES_KEY`,
+`SPACES_SECRET` et `SPACES_BUCKET` sont définies, `POST /photos` envoie la photo dans le Space
+(`photos/…`, lecture publique) et renvoie son URL CDN. Sans elles, la photo va dans `uploads/`.
+
+| Variable | Valeur |
+| --- | --- |
+| `SPACES_KEY` / `SPACES_SECRET` | Clé d'accès Spaces (API → Spaces Keys), à chiffrer (Encrypt) |
+| `SPACES_BUCKET` | Nom du Space |
+| `SPACES_REGION` | `fra1` (par défaut) |
+| `SPACES_CDN_URL` | Facultatif : `https://<space>.fra1.cdn.digitaloceanspaces.com` par défaut, ou domaine CDN personnalisé |
+
 ## Déployer sur Hostinger
 
 1. **Base MySQL** : hPanel → Bases de données → MySQL. Vérifiez le nom d'utilisateur de la base

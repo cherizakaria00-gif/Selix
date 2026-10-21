@@ -13,6 +13,7 @@ require __DIR__ . '/vendor/autoload.php';
 require __DIR__ . '/src/lib.php';
 require __DIR__ . '/src/push.php';
 require __DIR__ . '/src/chat.php';
+require __DIR__ . '/src/spaces.php';
 
 const TRANSACTIONS = ['location', 'achat'];
 const PROPERTY_TYPES = ['appartement', 'villa', 'studio', 'riad', 'bureau', 'terrain'];
@@ -284,7 +285,10 @@ function handle_upload(): array
         'image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp', 'image/heic' => 'heic', 'image/heif' => 'heic',
     ][(new finfo(FILEINFO_MIME_TYPE))->file($file['tmp_name'])] ?? null;
     if (!$ext) throw new HttpError(415, 'Format accepté : JPEG, PNG, WebP ou HEIC.');
+    $mime = $ext === 'jpg' ? 'image/jpeg' : ($ext === 'heic' ? 'image/heic' : "image/$ext");
     $name = date('Ym') . '-' . bin2hex(random_bytes(12)) . '.' . $ext;
+    if ($spaces = spaces_config()) return ['url' => spaces_put($spaces, $file['tmp_name'], "photos/$name", $mime)];
+    // Sans Space configuré (tests locaux, Hostinger) : disque local.
     if (!move_uploaded_file($file['tmp_name'], __DIR__ . '/uploads/' . $name)) throw new HttpError(500, "Impossible d'enregistrer la photo.");
     return ['url' => rtrim((string) config('public_url'), '/') . '/uploads/' . $name];
 }
