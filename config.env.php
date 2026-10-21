@@ -16,7 +16,7 @@ return [
         'user' => $env('DB_USER') ?? $env('MYSQLUSER'),
         'password' => $env('DB_PASSWORD') ?? $env('MYSQLPASSWORD'),
         // Contenu PEM du certificat CA de la base (DigitalOcean : « Download CA certificate »).
-        // Contenu PEM, ou chemin d'un fichier .crt monté dans le conteneur.
+        // Contenu PEM, chemin d'un fichier .crt, ou REQUIRED (chiffré sans vérification).
         'ssl_ca' => ($ca = $env('DB_SSL_CA')) && is_file($ca) ? file_get_contents($ca) : $ca,
         'ssl_verify' => $env('DB_SSL_VERIFY') !== '0',
     ],

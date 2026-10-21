@@ -49,7 +49,11 @@ function db(): PDO
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
     ];
     // Bases managées (DigitalOcean…) : connexion TLS vérifiée avec leur certificat d'autorité.
-    if (!empty($c['ssl_ca'])) {
+    if (strtoupper((string) ($c['ssl_ca'] ?? '')) === 'REQUIRED') {
+        // Équivalent de sslmode=REQUIRED : chiffré, sans vérifier le certificat du serveur.
+        $options[PDO::MYSQL_ATTR_SSL_CA] = '/etc/ssl/certs/ca-certificates.crt';
+        $options[PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT] = false;
+    } elseif (!empty($c['ssl_ca'])) {
         $caFile = sys_get_temp_dir() . '/selix-db-ca.pem';
         if (!is_file($caFile)) file_put_contents($caFile, $c['ssl_ca']);
         $options[PDO::MYSQL_ATTR_SSL_CA] = $caFile;
