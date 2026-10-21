@@ -1,0 +1,9 @@
+config.php
+data/
+uploads/*
+!uploads/.htaccess
+.git
+*.DS_Store
+selix.env
+ca-certificate.crt
+vendor/

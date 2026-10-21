@@ -1,0 +1,29 @@
+# Déploiement sur un serveur (Droplet DigitalOcean) : API + Caddy pour le HTTPS automatique.
+# Sur le serveur : `docker compose up -d --build` dans ce dossier, avec un fichier selix.env
+# (voir selix.env.example) qui n'est jamais versionné.
+services:
+  api:
+    build: .
+    env_file: selix.env
+    volumes:
+      - uploads:/var/www/html/uploads
+      - ./ca-certificate.crt:/etc/selix/db-ca.crt:ro
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - SITE_ADDRESS=${SITE_ADDRESS}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  uploads:
+  caddy_data:

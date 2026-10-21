@@ -1,0 +1,7 @@
+config.php
+/uploads/*
+!/uploads/.htaccess
+data/
+selix.env
+ca-certificate.crt
+vendor/

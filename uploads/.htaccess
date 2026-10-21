@@ -1,0 +1,6 @@
+# Dossier des photos : aucun script ne doit s'exécuter ici.
+Options -Indexes
+<FilesMatch "\.(php\d?|phtml|phar|pl|py|cgi|sh)$">
+  Require all denied
+</FilesMatch>
+RemoveHandler .php .phtml .phar

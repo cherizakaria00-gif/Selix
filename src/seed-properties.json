@@ -1,0 +1,358 @@
+[
+ {
+  "id": "p-anfa5",
+  "title": "Les Villas d'Anfa 5",
+  "standing": "HAUT STANDING",
+  "delivery": "289 à 357 m² construits · terrains de 250 à 491 m²",
+  "transaction": "achat",
+  "type": "villa",
+  "city": "Dar Bouazza",
+  "district": "Anfa 5",
+  "price": 4500000,
+  "surface": 289,
+  "bedrooms": 4,
+  "bathrooms": 4,
+  "features": [
+   "piscine",
+   "jardin",
+   "parking",
+   "sécurité",
+   "terrasse"
+  ],
+  "description": "Une adresse familiale premium dans la nature : villas contemporaines avec piscine et jardin, sur un domaine de 10 hectares, à 2 min du Mercato, des commerces et des restaurants.",
+  "latitude": 33.5248,
+  "longitude": -7.8189,
+  "images": [
+   "local:anfa-ext",
+   "local:anfa-pool",
+   "local:anfa-salon",
+   "local:anfa-bed2",
+   "local:anfa-bed1",
+   "local:anfa-bath",
+   "local:anfa-dressing"
+  ],
+  "status": "disponible",
+  "agentPhone": "+212522000000",
+  "createdAt": 1788220800000
+ },
+ {
+  "id": "p-linaz-t2",
+  "title": "Linaz Living — T2",
+  "standing": "HAUT STANDING",
+  "delivery": "Disponible immédiatement",
+  "transaction": "location",
+  "type": "appartement",
+  "city": "Casablanca",
+  "district": "Anfa",
+  "price": 15000,
+  "surface": 88,
+  "bedrooms": 2,
+  "bathrooms": 2,
+  "features": [
+   "meublé",
+   "ascenseur",
+   "parking",
+   "sécurité"
+  ],
+  "description": "T2 meublé avec goût, résidence sécurisée, proche Boulevard Anfa et Racine.",
+  "latitude": 33.5938,
+  "longitude": -7.6521,
+  "images": [
+   "local:anfa-salon",
+   "local:anfa-hall",
+   "local:anfa-bed2",
+   "local:anfa-vasque"
+  ],
+  "status": "disponible",
+  "agentPhone": "+212522000000",
+  "createdAt": 1788393600000
+ },
+ {
+  "id": "p-villa-kech",
+  "title": "Les Villas d'Anfa",
+  "standing": "MARRAKECH · PRESTIGE",
+  "delivery": "91 villas sur 14,5 hectares",
+  "transaction": "achat",
+  "type": "villa",
+  "city": "Marrakech",
+  "district": "Chrifia",
+  "price": 6900000,
+  "surface": 380,
+  "bedrooms": 5,
+  "bathrooms": 4,
+  "features": [
+   "piscine",
+   "jardin",
+   "parking",
+   "sécurité",
+   "terrasse",
+   "padel"
+  ],
+  "description": "Villas premium jumelées et isolées dans une résidence privée et sécurisée du quartier Chrifia : 3 terrains de padel, terrain de football, aires de jeux. À 4 min du boulevard Mohammed VI et 15 min de l’aéroport Marrakech-Ménara.",
+  "latitude": 31.588,
+  "longitude": -8.028,
+  "images": [
+   "local:kech-1",
+   "local:kech-2",
+   "local:kech-3"
+  ],
+  "status": "disponible",
+  "agentPhone": "+212522000000",
+  "createdAt": 1788566400000
+ },
+ {
+  "id": "p-kech-location",
+  "title": "Villa Palmeraie",
+  "standing": "PRESTIGE",
+  "transaction": "location",
+  "type": "villa",
+  "city": "Marrakech",
+  "district": "Palmeraie",
+  "price": 45000,
+  "surface": 400,
+  "bedrooms": 4,
+  "bathrooms": 4,
+  "features": [
+   "piscine",
+   "jardin",
+   "meublé",
+   "sécurité"
+  ],
+  "description": "Villa meublée disponible à la location longue durée, entretien piscine et jardin inclus.",
+  "latitude": 31.6801,
+  "longitude": -7.9585,
+  "images": [
+   "local:kech-2",
+   "local:kech-1"
+  ],
+  "status": "disponible",
+  "agentPhone": "+212522000000",
+  "createdAt": 1788652800000
+ },
+ {
+  "id": "p-maarif-studio",
+  "title": "Studio Maârif",
+  "transaction": "location",
+  "type": "studio",
+  "city": "Casablanca",
+  "district": "Maârif",
+  "price": 6500,
+  "surface": 42,
+  "bedrooms": 1,
+  "bathrooms": 1,
+  "features": [
+   "meublé",
+   "ascenseur"
+  ],
+  "description": "Studio rénové, idéal jeune actif, à deux pas du Twin Center et du tramway.",
+  "latitude": 33.5832,
+  "longitude": -7.6335,
+  "images": [
+   "local:anfa-bed1",
+   "local:anfa-vasque"
+  ],
+  "status": "disponible",
+  "agentPhone": "+212522000000",
+  "createdAt": 1788825600000
+ },
+ {
+  "id": "p-racine-bureau",
+  "title": "Plateau Racine",
+  "standing": "BUSINESS",
+  "transaction": "location",
+  "type": "bureau",
+  "city": "Casablanca",
+  "district": "Racine",
+  "price": 18000,
+  "surface": 120,
+  "bedrooms": 0,
+  "bathrooms": 1,
+  "features": [
+   "ascenseur",
+   "parking",
+   "climatisation"
+  ],
+  "description": "Plateau de bureaux lumineux, open space + 2 bureaux fermés, immeuble récent.",
+  "latitude": 33.5899,
+  "longitude": -7.6381,
+  "images": [
+   "local:anfa-hall",
+   "local:anfa-salon"
+  ],
+  "status": "disponible",
+  "agentPhone": "+212522000000",
+  "createdAt": 1788912000000
+ },
+ {
+  "id": "p-bouskoura-villa",
+  "title": "Villa Golf Bouskoura",
+  "standing": "HAUT STANDING",
+  "transaction": "achat",
+  "type": "villa",
+  "city": "Bouskoura",
+  "district": "Ville Verte",
+  "price": 4900000,
+  "surface": 350,
+  "bedrooms": 4,
+  "bathrooms": 3,
+  "features": [
+   "piscine",
+   "jardin",
+   "parking",
+   "sécurité"
+  ],
+  "description": "Villa en résidence fermée avec vue golf, à 15 min de Casablanca.",
+  "latitude": 33.4493,
+  "longitude": -7.6482,
+  "images": [
+   "local:anfa-pool",
+   "local:anfa-ext",
+   "local:anfa-salon"
+  ],
+  "status": "disponible",
+  "agentPhone": "+212522000000",
+  "createdAt": 1788998400000
+ },
+ {
+  "id": "p-hayriad-t3",
+  "title": "Résidence Hay Riad",
+  "transaction": "location",
+  "type": "appartement",
+  "city": "Rabat",
+  "district": "Hay Riad",
+  "price": 9000,
+  "surface": 110,
+  "bedrooms": 3,
+  "bathrooms": 2,
+  "features": [
+   "parking",
+   "ascenseur",
+   "balcon"
+  ],
+  "description": "Grand T3 familial proche des écoles et du Mahaj Riad.",
+  "latitude": 33.9591,
+  "longitude": -6.8742,
+  "images": [
+   "local:anfa-bed2",
+   "local:anfa-hall",
+   "local:anfa-bath"
+  ],
+  "status": "disponible",
+  "agentPhone": "+212522000000",
+  "createdAt": 1789084800000
+ },
+ {
+  "id": "p-souissi-villa",
+  "title": "Villa Souissi",
+  "standing": "PRESTIGE",
+  "transaction": "achat",
+  "type": "villa",
+  "city": "Rabat",
+  "district": "Souissi",
+  "price": 7200000,
+  "surface": 600,
+  "bedrooms": 6,
+  "bathrooms": 5,
+  "features": [
+   "piscine",
+   "jardin",
+   "sécurité",
+   "parking"
+  ],
+  "description": "Villa de maître dans le quartier diplomatique, grand jardin arboré.",
+  "latitude": 33.9702,
+  "longitude": -6.8351,
+  "images": [
+   "local:kech-2",
+   "local:kech-3"
+  ],
+  "status": "disponible",
+  "agentPhone": "+212522000000",
+  "createdAt": 1789171200000
+ },
+ {
+  "id": "p-malabata",
+  "title": "Malabata Bay",
+  "standing": "VUE MER",
+  "delivery": "Livraison 2027",
+  "transaction": "achat",
+  "type": "appartement",
+  "city": "Tanger",
+  "district": "Malabata",
+  "price": 2100000,
+  "surface": 105,
+  "bedrooms": 2,
+  "bathrooms": 2,
+  "features": [
+   "vue mer",
+   "piscine",
+   "parking",
+   "ascenseur"
+  ],
+  "description": "Appartement face à la baie de Tanger, résidence avec piscine commune.",
+  "latitude": 35.7831,
+  "longitude": -5.7792,
+  "images": [
+   "local:anfa-pool",
+   "local:anfa-bed1"
+  ],
+  "status": "disponible",
+  "agentPhone": "+212522000000",
+  "createdAt": 1789257600000
+ },
+ {
+  "id": "p-gueliz",
+  "title": "Appartement Guéliz",
+  "transaction": "location",
+  "type": "appartement",
+  "city": "Marrakech",
+  "district": "Guéliz",
+  "price": 8000,
+  "surface": 75,
+  "bedrooms": 2,
+  "bathrooms": 1,
+  "features": [
+   "meublé",
+   "climatisation",
+   "balcon"
+  ],
+  "description": "Appartement lumineux en plein Guéliz, proche commerces et restaurants.",
+  "latitude": 31.6345,
+  "longitude": -8.0102,
+  "images": [
+   "local:anfa-salon",
+   "local:anfa-bed1"
+  ],
+  "status": "disponible",
+  "agentPhone": "+212522000000",
+  "createdAt": 1789344000000
+ },
+ {
+  "id": "p-agadir",
+  "title": "Agadir Marina",
+  "standing": "VUE MER",
+  "transaction": "achat",
+  "type": "appartement",
+  "city": "Agadir",
+  "district": "Marina",
+  "price": 1350000,
+  "surface": 80,
+  "bedrooms": 2,
+  "bathrooms": 1,
+  "features": [
+   "vue mer",
+   "piscine",
+   "sécurité"
+  ],
+  "description": "Appartement dans la marina, idéal résidence secondaire ou investissement locatif.",
+  "latitude": 30.4205,
+  "longitude": -9.6145,
+  "images": [
+   "local:anfa-pool",
+   "local:anfa-bath"
+  ],
+  "status": "disponible",
+  "agentPhone": "+212522000000",
+  "createdAt": 1789430400000
+ }
+]
