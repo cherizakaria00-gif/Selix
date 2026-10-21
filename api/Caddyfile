@@ -1,0 +1,8 @@
+# SITE_ADDRESS : le nom du serveur (ex. api.selix.io, ou <ip>.sslip.io sans DNS à configurer).
+{$SITE_ADDRESS} {
+	encode gzip
+	request_body {
+		max_size 14MB
+	}
+	reverse_proxy api:8080
+}
