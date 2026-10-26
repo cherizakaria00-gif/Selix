@@ -3,6 +3,7 @@ import { useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -45,6 +46,8 @@ export default function Assistant() {
   function send(value = text) {
     if (!value.trim() || thinking) return;
     setText('');
+    // On ferme le clavier pour laisser voir la réponse et les biens proposés.
+    Keyboard.dismiss();
     sendMessage(value);
   }
 
@@ -72,41 +75,43 @@ export default function Assistant() {
         </View>
       ) : null}
 
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-        style={{ flex: 1 }}>
-        <FlatList
-          ref={list}
-          data={messages}
-          keyExtractor={(m) => m.id}
-          contentContainerStyle={{ padding: 16, gap: 12 }}
-          onContentSizeChange={() => list.current?.scrollToEnd({ animated: true })}
-          renderItem={({ item }) => (
-            <View style={{ gap: 8 }}>
-              <View style={[styles.bubble, item.role === 'user' ? styles.mine : styles.theirs]}>
-                <Text style={styles.bubbleText}>{item.text}</Text>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+        <Pressable style={{ flex: 1 }} onPress={Keyboard.dismiss} accessible={false}>
+          <FlatList
+            ref={list}
+            style={{ flex: 1 }}
+            keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+            keyboardShouldPersistTaps="handled"
+            data={messages}
+            keyExtractor={(m) => m.id}
+            contentContainerStyle={{ padding: 16, gap: 12 }}
+            onContentSizeChange={() => list.current?.scrollToEnd({ animated: true })}
+            renderItem={({ item }) => (
+              <View style={{ gap: 8 }}>
+                <View style={[styles.bubble, item.role === 'user' ? styles.mine : styles.theirs]}>
+                  <Text style={styles.bubbleText}>{item.text}</Text>
+                </View>
+                {item.propertyIds?.map((id) => {
+                  const p = properties.find((x) => x.id === id);
+                  return p ? <PropertyRow key={id} property={p} score={score(p).score} /> : null;
+                })}
               </View>
-              {item.propertyIds?.map((id) => {
-                const p = properties.find((x) => x.id === id);
-                return p ? <PropertyRow key={id} property={p} score={score(p).score} /> : null;
-              })}
-            </View>
-          )}
-          ListFooterComponent={
-            thinking ? (
-              <View style={[styles.bubble, styles.theirs, { marginTop: 12, flexDirection: 'row', gap: 8 }]}>
-                <ActivityIndicator size="small" color={Colors.pink} />
-                <Text style={styles.bubbleText}>Je cherche les meilleurs biens…</Text>
-              </View>
-            ) : undefined
-          }
-        />
+            )}
+            ListFooterComponent={
+              thinking ? (
+                <View style={[styles.bubble, styles.theirs, { marginTop: 12, flexDirection: 'row', gap: 8 }]}>
+                  <ActivityIndicator size="small" color={Colors.pink} />
+                  <Text style={styles.bubbleText}>Je cherche les meilleurs biens…</Text>
+                </View>
+              ) : undefined
+            }
+          />
+        </Pressable>
 
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          style={{ flexGrow: 0 }}
+          style={{ flexGrow: 0, flexShrink: 0 }}
           contentContainerStyle={styles.suggestions}
           keyboardShouldPersistTaps="handled">
           {SUGGESTIONS.map((s) => (
@@ -162,8 +167,16 @@ const styles = StyleSheet.create({
   },
   criteriaText: { color: Colors.text, fontSize: 12, flex: 1 },
   bubble: { maxWidth: '86%', padding: 12, borderRadius: 18 },
-  mine: { alignSelf: 'flex-end', backgroundColor: Colors.primary, borderBottomRightRadius: 4 },
-  theirs: { alignSelf: 'flex-start', backgroundColor: Colors.cardStrong, borderBottomLeftRadius: 4 },
+  mine: {
+    alignSelf: 'flex-end',
+    backgroundColor: Colors.primary,
+    borderBottomRightRadius: 4,
+  },
+  theirs: {
+    alignSelf: 'flex-start',
+    backgroundColor: Colors.cardStrong,
+    borderBottomLeftRadius: 4,
+  },
   bubbleText: { color: '#fff', fontSize: 15, lineHeight: 21 },
   suggestions: { paddingHorizontal: 16, gap: 8, paddingVertical: 8 },
   suggestion: {
@@ -175,7 +188,13 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.card,
   },
   suggestionText: { color: Colors.textMuted, fontSize: 12 },
-  composer: { flexDirection: 'row', alignItems: 'flex-end', gap: 10, padding: 12, paddingTop: 4 },
+  composer: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 10,
+    padding: 12,
+    paddingTop: 4,
+  },
   input: {
     flex: 1,
     color: '#fff',
