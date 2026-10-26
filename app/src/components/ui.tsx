@@ -17,6 +17,7 @@ import {
 import { SafeAreaView, type Edge } from 'react-native-safe-area-context';
 
 import { Colors, Gradients, Radius, Spacing } from '@/constants/theme';
+import { useIsDesktop } from '@/utils/platform';
 
 export type IconName = ComponentProps<typeof Ionicons>['name'];
 
@@ -30,12 +31,14 @@ export function Screen({
   edges?: Edge[];
   style?: StyleProp<ViewStyle>;
 }) {
+  const desktop = useIsDesktop();
   return (
-    <View style={styles.flex}>
+    // overflow: les halos décoratifs dépassent du bord ; sur le web ils créaient un défilement horizontal.
+    <View style={[styles.flex, { overflow: 'hidden' }]}>
       <LinearGradient colors={Gradients.background} style={StyleSheet.absoluteFill} />
       <View style={[styles.glow, { top: -120, left: -100, backgroundColor: 'rgba(192,16,160,0.18)' }]} />
       <View style={[styles.glow, { top: 220, right: -140, backgroundColor: 'rgba(106,40,234,0.22)' }]} />
-      <SafeAreaView edges={edges} style={[styles.flex, style]}>
+      <SafeAreaView edges={edges} style={[styles.flex, desktop && styles.desktop, style]}>
         {children}
       </SafeAreaView>
     </View>
@@ -62,6 +65,17 @@ export function Logo({ height = 36, variant = 'full' }: { height?: number; varia
 }
 
 export function Header({ title, right, left }: { title?: string; right?: ReactNode; left?: ReactNode }) {
+  const desktop = useIsDesktop();
+  // Sur bureau, le logo est déjà dans le menu latéral : le titre prend sa place, aligné à gauche.
+  if (desktop && title) {
+    return (
+      <View style={[styles.header, styles.headerDesktop]}>
+        {left}
+        <Text style={[styles.headerTitle, styles.headerTitleDesktop]}>{title}</Text>
+        {right}
+      </View>
+    );
+  }
   return (
     <View style={styles.header}>
       {left ?? <Logo height={34} />}
@@ -212,6 +226,9 @@ export const styles = StyleSheet.create({
     gap: 12,
   },
   headerTitle: { flex: 1, color: Colors.text, fontSize: 20, fontWeight: '700', textAlign: 'right' },
+  headerDesktop: { paddingTop: 28, paddingBottom: 16 },
+  headerTitleDesktop: { fontSize: 28, textAlign: 'left' },
+  desktop: { width: '100%', maxWidth: 1200, alignSelf: 'center', paddingHorizontal: 16 },
   button: {
     height: 54,
     borderRadius: Radius.pill,

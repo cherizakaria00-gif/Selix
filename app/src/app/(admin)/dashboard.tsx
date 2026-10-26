@@ -6,10 +6,12 @@ import { PropertyRow } from '@/components/property-card';
 import { Card, GradientButton, Header, Screen, SectionTitle, type IconName } from '@/components/ui';
 import { Colors, Radius } from '@/constants/theme';
 import { useApp } from '@/store/app-store';
+import { useIsDesktop } from '@/utils/platform';
 import { timeAgo } from '@/utils/format';
 
 export default function Dashboard() {
   const { properties, swipes, leads, users, user } = useApp();
+  const desktop = useIsDesktop();
   const clients = users.filter((u) => u.role === 'user');
   const likes = swipes.filter((s) => s.action !== 'dislike');
   const rate = swipes.length ? Math.round((likes.length / swipes.length) * 100) : 0;
@@ -40,7 +42,7 @@ export default function Dashboard() {
 
         <View style={styles.grid}>
           {stats.map((s) => (
-            <Card key={s.label} style={styles.stat}>
+            <Card key={s.label} style={[styles.stat, desktop && styles.statDesktop]}>
               <View style={[styles.statIcon, { backgroundColor: s.color }]}>
                 <Ionicons name={s.icon} size={18} color="#fff" />
               </View>
@@ -108,6 +110,7 @@ const styles = StyleSheet.create({
   sub: { color: Colors.textMuted, fontSize: 14, marginTop: 4 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 20 },
   stat: { width: '47%', flexGrow: 1, gap: 6 },
+  statDesktop: { width: '22%' },
   statIcon: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
   statValue: { color: '#fff', fontSize: 26, fontWeight: '800' },
   statLabel: { color: Colors.textMuted, fontSize: 12 },

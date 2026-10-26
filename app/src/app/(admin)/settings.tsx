@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text } from 'react-native';
+import { ScrollView, StyleSheet, Text } from 'react-native';
 
 import { Card, GradientButton, Header, Screen, SectionTitle } from '@/components/ui';
 import { Colors } from '@/constants/theme';
 import { useApp } from '@/store/app-store';
+import { notify } from '@/utils/platform';
 
 export default function Settings() {
   const { user, logout, refresh } = useApp();
@@ -14,7 +15,7 @@ export default function Settings() {
     try {
       await refresh();
     } catch (e) {
-      Alert.alert('Serveur injoignable', e instanceof Error ? e.message : String(e));
+      notify('Serveur injoignable', e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }

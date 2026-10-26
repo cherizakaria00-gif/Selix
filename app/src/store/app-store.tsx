@@ -1,7 +1,7 @@
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 import { createContext, useContext, useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Alert, AppState as RNAppState, Platform } from 'react-native';
+import { AppState as RNAppState, Platform } from 'react-native';
 
 import {
   MATCH_THRESHOLD,
@@ -15,6 +15,7 @@ import {
   type Scored,
 } from '@/services/ai';
 import * as api from '@/services/api';
+import { notify } from '@/utils/platform';
 import type { Coords } from '@/services/geo';
 import { getPushToken, notifyNewMatch, setupNotifications } from '@/services/notifications';
 import {
@@ -67,7 +68,7 @@ type AppState = {
 const Ctx = createContext<AppState | null>(null);
 
 function alertError(e: unknown) {
-  Alert.alert('Connexion impossible', e instanceof Error ? e.message : String(e));
+  notify('Connexion impossible', e instanceof Error ? e.message : String(e));
 }
 
 export function useApp() {

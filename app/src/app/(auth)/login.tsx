@@ -6,6 +6,7 @@ import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text
 import { Badge, Field, GradientButton, Header, Screen } from '@/components/ui';
 import { Colors, Radius } from '@/constants/theme';
 import { useApp } from '@/store/app-store';
+import { isWeb } from '@/utils/platform';
 
 export default function Login() {
   const { login } = useApp();
@@ -32,16 +33,28 @@ export default function Login() {
     <Screen edges={['top', 'bottom']}>
       <Header
         right={
-          <Pressable onPress={() => router.back()} hitSlop={12}>
-            <Ionicons name="chevron-back" size={30} color={Colors.primary} />
-          </Pressable>
+          isWeb ? undefined : (
+            <Pressable onPress={() => router.back()} hitSlop={12}>
+              <Ionicons name="chevron-back" size={30} color={Colors.primary} />
+            </Pressable>
+          )
         }
       />
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <Badge label="Premium onboarding" icon="sparkles" />
-          <Text style={styles.title}>Bon retour dans Selix</Text>
-          <Text style={styles.sub}>Retrouvez vos matchs, messages, visites et le suivi complet de votre dossier.</Text>
+        <ScrollView contentContainerStyle={[styles.content, isWeb && styles.contentWeb]} keyboardShouldPersistTaps="handled">
+          {isWeb ? (
+            <>
+              <Badge label="Espace administrateur" icon="shield-checkmark" />
+              <Text style={styles.title}>Tableau de bord Selix</Text>
+              <Text style={styles.sub}>Gérez vos biens, suivez vos leads et l’activité des clients en temps réel.</Text>
+            </>
+          ) : (
+            <>
+              <Badge label="Premium onboarding" icon="sparkles" />
+              <Text style={styles.title}>Bon retour dans Selix</Text>
+              <Text style={styles.sub}>Retrouvez vos matchs, messages, visites et le suivi complet de votre dossier.</Text>
+            </>
+          )}
 
           <View style={styles.panel}>
             <View style={styles.stats}>
@@ -87,17 +100,21 @@ export default function Login() {
 
             {error ? <Text style={styles.error}>{error}</Text> : null}
 
+            {!isWeb && (
             <Pressable style={styles.hint} onPress={() => router.replace('/register')}>
               <Ionicons name="person-add-outline" size={18} color={Colors.pink} />
               <Text style={styles.hintText}>
                 Nouveau client ? Lancez d’abord le parcours guidé. Votre compte sera créé automatiquement à la fin.
               </Text>
             </Pressable>
+            )}
 
             <GradientButton label="Se connecter" onPress={submit} loading={loading} disabled={!email || !password} />
+            {!isWeb && (
             <Pressable onPress={() => router.replace('/register')} style={{ marginTop: 16 }}>
               <Text style={styles.link}>Commencer l’inscription guidée</Text>
             </Pressable>
+            )}
           </View>
           <Text style={styles.legal}>
             En continuant, vous acceptez nos conditions d’utilisation et notre politique de confidentialité.
@@ -110,6 +127,7 @@ export default function Login() {
 
 const styles = StyleSheet.create({
   content: { padding: 24, paddingTop: 8 },
+  contentWeb: { width: '100%', maxWidth: 480, alignSelf: 'center', paddingTop: 48 },
   title: { color: Colors.text, fontSize: 30, fontWeight: '500', marginTop: 16 },
   sub: { color: Colors.textMuted, fontSize: 15, lineHeight: 21, marginTop: 8, marginBottom: 20 },
   panel: {

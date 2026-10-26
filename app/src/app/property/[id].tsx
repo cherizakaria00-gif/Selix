@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { MapView, Marker } from '@/components/maps';
@@ -11,6 +11,7 @@ import { Badge, Card, Empty, GradientButton, MatchBadge, Screen, SectionTitle } 
 import { Colors, Radius } from '@/constants/theme';
 import { openDirections, openWhatsApp } from '@/services/geo';
 import { useApp } from '@/store/app-store';
+import { goBack, notify } from '@/utils/platform';
 import { formatDistance, formatPrice } from '@/utils/format';
 
 export default function PropertyDetails() {
@@ -24,7 +25,7 @@ export default function PropertyDetails() {
   if (!property) {
     return (
       <Screen>
-        <Empty icon="home-outline" title="Bien introuvable" action={<GradientButton label="Retour" onPress={() => router.back()} />} />
+        <Empty icon="home-outline" title="Bien introuvable" action={<GradientButton label="Retour" onPress={() => goBack('/')} />} />
       </Screen>
     );
   }
@@ -36,7 +37,7 @@ export default function PropertyDetails() {
 
   function askVisit() {
     requestVisit(property!.id);
-    Alert.alert('Demande envoyée ', 'Un commercial Selix vous contacte très vite pour fixer la visite.');
+    notify('Demande envoyée', 'Un commercial Selix vous contacte très vite pour fixer la visite.');
   }
 
   return (
@@ -54,7 +55,7 @@ export default function PropertyDetails() {
           </ScrollView>
           <LinearGradient colors={['rgba(18,6,42,0.6)', 'transparent', Colors.bg]} style={StyleSheet.absoluteFill} pointerEvents="none" />
           <View style={[styles.topBar, { top: insets.top + 6 }]}>
-            <Pressable onPress={() => router.back()} style={styles.iconBtn}>
+            <Pressable onPress={() => goBack('/')} style={styles.iconBtn}>
               <Ionicons name="chevron-down" size={24} color="#fff" />
             </Pressable>
             {!isAdmin && (

@@ -1,9 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
-import { router, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { MapView, Marker, type MapPressEvent } from '@/components/maps';
 import { PropertyImage } from '@/components/property-card';
@@ -12,6 +12,7 @@ import { Colors, Radius } from '@/constants/theme';
 import { uid } from '@/services/api';
 import { MOROCCO_REGION } from '@/services/geo';
 import { useApp } from '@/store/app-store';
+import { confirmAction, goBack, notify } from '@/utils/platform';
 import type { Property, PropertyStatus, PropertyType, Transaction } from '@/types';
 
 const TYPES: PropertyType[] = ['appartement', 'villa', 'studio', 'riad', 'bureau', 'terrain'];
@@ -52,6 +53,13 @@ export default function EditProperty() {
   const { properties, saveProperty, deleteProperty } = useApp();
   const existing = properties.find((p) => p.id === id);
   const [p, setP] = useState<Property>(() => existing ?? blank());
+  // Ouvert par son adresse (rechargement, lien direct), le bien arrive après le premier
+  // rendu : on remplit alors le formulaire, sinon l'enregistrement écraserait le bien.
+  const [loadedId, setLoadedId] = useState(existing?.id);
+  if (existing && loadedId !== existing.id) {
+    setLoadedId(existing.id);
+    setP(existing);
+  }
   const [saving, setSaving] = useState(false);
   const set = <K extends keyof Property>(k: K, v: Property[K]) => setP((prev) => ({ ...prev, [k]: v }));
   const hasPin = p.latitude !== 0 || p.longitude !== 0;
@@ -68,7 +76,7 @@ export default function EditProperty() {
 
   async function useMyPosition() {
     const { granted } = await Location.requestForegroundPermissionsAsync();
-    if (!granted) return Alert.alert('Localisation refusée', 'Placez le bien en touchant la carte.');
+    if (!granted) return notify('Localisation refusée', 'Placez le bien en touchant la carte.');
     const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
     setP((prev) => ({ ...prev, latitude: loc.coords.latitude, longitude: loc.coords.longitude }));
   }
@@ -81,41 +89,33 @@ export default function EditProperty() {
       !hasPin && 'position sur la carte',
       !p.images.length && 'au moins une photo',
     ].filter(Boolean);
-    if (missing.length) return Alert.alert('Champs manquants', `Merci de renseigner : ${missing.join(', ')}.`);
+    if (missing.length) return notify('Champs manquants', `Merci de renseigner : ${missing.join(', ')}.`);
     setSaving(true);
     try {
       await saveProperty({ ...p, title: p.title.trim(), district: p.district.trim() });
-      router.back();
+      goBack('/properties');
     } catch (e) {
-      Alert.alert('Enregistrement impossible', e instanceof Error ? e.message : String(e));
+      notify('Enregistrement impossible', e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
     }
   }
 
-  function remove() {
-    Alert.alert('Supprimer ce bien ?', 'Cette action est définitive.', [
-      { text: 'Annuler', style: 'cancel' },
-      {
-        text: 'Supprimer',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await deleteProperty(p.id);
-            router.back();
-          } catch (e) {
-            Alert.alert('Suppression impossible', e instanceof Error ? e.message : String(e));
-          }
-        },
-      },
-    ]);
+  async function remove() {
+    if (!(await confirmAction('Supprimer ce bien ?', 'Cette action est définitive.', 'Supprimer'))) return;
+    try {
+      await deleteProperty(p.id);
+      goBack('/properties');
+    } catch (e) {
+      notify('Suppression impossible', e instanceof Error ? e.message : String(e));
+    }
   }
 
   return (
     <Screen edges={['top', 'bottom']}>
       <Header
         left={
-          <Pressable onPress={() => router.back()} hitSlop={10}>
+          <Pressable onPress={() => goBack('/properties')} hitSlop={10}>
             <Ionicons name="close" size={28} color="#fff" />
           </Pressable>
         }
@@ -227,6 +227,7 @@ export default function EditProperty() {
           <Text style={styles.help}>Touchez la carte pour placer le bien, ou utilisez votre position si vous êtes sur place.</Text>
           <View style={styles.map}>
             <MapView
+              key={loadedId ?? 'new'}
               style={StyleSheet.absoluteFill}
               initialRegion={
                 hasPin ? { latitude: p.latitude, longitude: p.longitude, latitudeDelta: 0.03, longitudeDelta: 0.03 } : MOROCCO_REGION
