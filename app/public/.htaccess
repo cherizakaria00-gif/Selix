@@ -1,5 +1,8 @@
 # Hébergement Hostinger (Apache) : toutes les routes du tableau de bord
 # (/dashboard, /leads…) sont servies par index.html, l'app gère la navigation.
+# index.html passe avant la page par défaut d'Hostinger (default.php / index.php).
+DirectoryIndex index.html
+
 RewriteEngine On
 RewriteCond %{HTTPS} off
 RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
