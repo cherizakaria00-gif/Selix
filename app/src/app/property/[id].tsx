@@ -7,19 +7,23 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { MapView, Marker } from '@/components/maps';
 import { PropertyImage } from '@/components/property-card';
+import { VisitScheduler } from '@/components/visit-scheduler';
 import { Badge, Card, Empty, GradientButton, MatchBadge, Screen, SectionTitle } from '@/components/ui';
 import { Colors, Radius } from '@/constants/theme';
 import { openDirections, openWhatsApp } from '@/services/geo';
 import { useApp } from '@/store/app-store';
-import { goBack, notify } from '@/utils/platform';
+import { confirmAction, goBack, notify } from '@/utils/platform';
+import { formatVisit, ucfirst } from '@/utils/dates';
 import { formatDistance, formatPrice } from '@/utils/format';
 
 export default function PropertyDetails() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { properties, score, user, likedIds, swipe, requestVisit, leads } = useApp();
+  const { properties, score, user, likedIds, swipe, requestVisit, cancelVisit, busySlots, leads } = useApp();
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const [page, setPage] = useState(0);
+  const [scheduling, setScheduling] = useState(false);
+  const [busy, setBusy] = useState<number[]>([]);
   const property = properties.find((p) => p.id === id);
 
   if (!property) {
@@ -33,11 +37,31 @@ export default function PropertyDetails() {
   const isAdmin = user?.role === 'admin';
   const s = score(property);
   const liked = likedIds.has(property.id);
-  const visitAsked = leads.some((l) => l.userId === user?.id && l.propertyId === property.id && l.kind === 'visite');
+  // Visite en cours pour ce client : demandée (à confirmer) ou confirmée ; une visite annulée ne compte plus.
+  const myLead = leads.find((l) => l.userId === user?.id && l.propertyId === property.id);
+  const visit = myLead?.visitAt && myLead.visitStatus !== 'annulée' ? myLead : null;
 
-  function askVisit() {
-    requestVisit(property!.id);
-    notify('Demande envoyée', 'Un commercial Selix vous contacte très vite pour fixer la visite.');
+  async function openScheduler() {
+    setBusy(await busySlots(property!.id));
+    setScheduling(true);
+  }
+
+  async function submitVisit(visitAt: number, note: string) {
+    await requestVisit(property!.id, visitAt, note || undefined);
+    notify(
+      'Demande envoyée',
+      `Visite souhaitée le ${formatVisit(visitAt)}. Un commercial Selix vous la confirme très vite, vous serez notifié.`,
+    );
+  }
+
+  async function cancel() {
+    if (!visit) return;
+    if (!(await confirmAction('Annuler la visite ?', `Votre visite du ${formatVisit(visit.visitAt!)} sera annulée.`, 'Annuler la visite'))) return;
+    try {
+      await cancelVisit(visit.id);
+    } catch (e) {
+      notify('Annulation impossible', e instanceof Error ? e.message : String(e));
+    }
   }
 
   return (
@@ -119,6 +143,29 @@ export default function PropertyDetails() {
             </Card>
           )}
 
+          {visit && (
+            <Card style={[styles.visitCard, visit.visitStatus === 'confirmée' && { borderColor: 'rgba(43,212,125,0.5)' }]}>
+              <View style={styles.visitHead}>
+                <Ionicons
+                  name={visit.visitStatus === 'confirmée' ? 'checkmark-circle' : 'time'}
+                  size={22}
+                  color={visit.visitStatus === 'confirmée' ? Colors.like : Colors.orange}
+                />
+                <Text style={styles.visitTitle}>{visit.visitStatus === 'confirmée' ? 'Visite confirmée' : 'Visite demandée'}</Text>
+              </View>
+              <Text style={styles.visitDate}>{ucfirst(formatVisit(visit.visitAt!))}</Text>
+              <Text style={styles.meta}>
+                {visit.visitStatus === 'confirmée'
+                  ? 'Un commercial Selix vous attend sur place.'
+                  : 'En attente de confirmation par un commercial Selix. Vous serez notifié.'}
+              </Text>
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
+                <GradientButton label="Modifier" variant="ghost" icon="create-outline" onPress={openScheduler} style={{ flex: 1 }} />
+                <GradientButton label="Annuler" variant="ghost" icon="close" onPress={cancel} style={{ flex: 1 }} />
+              </View>
+            </Card>
+          )}
+
           <SectionTitle style={{ marginTop: 24 }}>Description</SectionTitle>
           <Text style={styles.description}>{property.description}</Text>
 
@@ -184,20 +231,35 @@ export default function PropertyDetails() {
               />
             </View>
             <GradientButton
-              label={visitAsked ? 'Visite demandée ' : 'Demander une visite'}
+              label={visit ? 'Modifier ma visite' : 'Demander une visite'}
               icon="calendar"
-              disabled={visitAsked}
-              onPress={askVisit}
+              onPress={openScheduler}
               style={{ marginTop: 10 }}
             />
           </>
         )}
       </LinearGradient>
+
+      <VisitScheduler
+        visible={scheduling}
+        onClose={() => setScheduling(false)}
+        title={visit ? 'Modifier ma visite' : 'Choisir une date de visite'}
+        subtitle={property.title}
+        busy={busy.filter((b) => b !== visit?.visitAt)}
+        initial={visit?.visitAt}
+        confirmLabel={visit ? 'Envoyer le nouveau créneau' : 'Envoyer ma demande'}
+        askNote
+        onSubmit={submitVisit}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  visitCard: { marginTop: 16, borderColor: 'rgba(245,165,36,0.5)' },
+  visitHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  visitTitle: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  visitDate: { color: Colors.gold, fontSize: 20, fontWeight: '800', marginVertical: 6 },
   topBar: { position: 'absolute', left: 16, right: 16, flexDirection: 'row', justifyContent: 'space-between' },
   iconBtn: {
     width: 42,

@@ -6,6 +6,8 @@ export type Role = 'user' | 'admin' | 'commercial' | 'promoteur';
 export type StaffRole = 'commercial' | 'promoteur';
 /** Un bien déposé par un promoteur n'est publié qu'après validation du super admin. */
 export type Approval = 'validé' | 'en attente' | 'refusé';
+/** Visite demandée par le client, puis confirmée (ou annulée) par Selix. */
+export type VisitStatus = 'demandée' | 'confirmée' | 'annulée';
 
 export type Property = {
   id: string;
@@ -99,6 +101,9 @@ export type Lead = {
   /** Commercial à qui le super admin a confié le lead (vu du personnel seulement). */
   assignedTo?: string;
   client?: { name: string; phone: string; email: string };
+  /** Date et heure de la visite (millisecondes) et son état. */
+  visitAt?: number;
+  visitStatus?: VisitStatus;
 };
 
 export type ChatMessage = {

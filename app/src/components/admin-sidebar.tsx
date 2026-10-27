@@ -20,6 +20,7 @@ const ICONS: Record<string, IconName> = {
   dashboard: 'grid',
   properties: 'business',
   leads: 'people',
+  agenda: 'calendar',
   settings: 'settings',
   team: 'people-circle',
 };

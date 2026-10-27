@@ -6,6 +6,7 @@ import { Empty, GradientButton, Header, Screen } from '@/components/ui';
 import { Colors, Radius } from '@/constants/theme';
 import { useApp } from '@/store/app-store';
 import type { LeadStatus } from '@/types';
+import { formatVisit } from '@/utils/dates';
 
 const STATUS_LABEL: Record<LeadStatus, { label: string; color: string }> = {
   nouveau: { label: 'Commercial notifié', color: Colors.orange },
@@ -44,7 +45,13 @@ export default function Favorites() {
               <PropertyRow property={item.property!} score={score(item.property!).score} />
               <View style={styles.tags}>
                 {item.swipe.action === 'superlike' && <Text style={[styles.tag, { color: Colors.star }]}>Coup de cœur</Text>}
-                {lead?.kind === 'visite' && <Text style={[styles.tag, { color: Colors.pink }]}>Visite demandée</Text>}
+                {lead?.visitAt && lead.visitStatus !== 'annulée' ? (
+                  <Text style={[styles.tag, { color: lead.visitStatus === 'confirmée' ? Colors.like : Colors.orange }]}>
+                    {lead.visitStatus === 'confirmée' ? 'Visite confirmée' : 'Visite demandée'} · {formatVisit(lead.visitAt)}
+                  </Text>
+                ) : lead?.kind === 'visite' ? (
+                  <Text style={[styles.tag, { color: Colors.pink }]}>Visite demandée</Text>
+                ) : null}
                 {st && <Text style={[styles.tag, { color: st.color }]}>● {st.label}</Text>}
               </View>
             </View>

@@ -217,8 +217,13 @@ export function getLeads(): Promise<Lead[]> {
   return cachedGet<Lead[]>('/leads', []);
 }
 
-export function createLead(_userId: string, propertyId: string, kind: Lead['kind'], note?: string): Promise<Lead[]> {
-  return request<Lead[]>('POST', '/leads', { propertyId, kind, note });
+export function createLead(_userId: string, propertyId: string, kind: Lead['kind'], note?: string, visitAt?: number): Promise<Lead[]> {
+  return request<Lead[]>('POST', '/leads', { propertyId, kind, note, visitAt });
+}
+
+/** Horaires déjà confirmés pour ce bien : le calendrier les grise. */
+export function getBusySlots(propertyId: string): Promise<number[]> {
+  return request<number[]>('GET', `/properties/${encodeURIComponent(propertyId)}/busy`);
 }
 
 export function updateLead(id: string, patch: Partial<Lead>): Promise<Lead[]> {
@@ -226,6 +231,8 @@ export function updateLead(id: string, patch: Partial<Lead>): Promise<Lead[]> {
   return request<Lead[]>('PATCH', `/leads/${encodeURIComponent(id)}`, {
     status: patch.status,
     note: patch.note,
+    visitAt: patch.visitAt,
+    visitStatus: patch.visitStatus,
     ...('assignedTo' in patch ? { assignedTo: patch.assignedTo ?? null } : null),
   });
 }

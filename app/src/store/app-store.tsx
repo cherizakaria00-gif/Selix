@@ -25,7 +25,7 @@ import {
   syncBackgroundGeofences,
   type BackgroundStatus,
 } from '@/services/proximity';
-import type { Approval, ChatMessage, Lead, Profile, Property, PropertyStats, Role, Swipe, SwipeAction, User } from '@/types';
+import type { Approval, ChatMessage, Lead, Profile, Property, PropertyStats, Role, Swipe, SwipeAction, User, VisitStatus } from '@/types';
 
 type RegisterInput = Omit<User, 'id' | 'role' | 'createdAt'> & { needs?: string; profile?: Partial<Profile> };
 
@@ -59,7 +59,12 @@ type AppState = {
   sendMessage: (text: string) => Promise<void>;
   updateProfile: (patch: Partial<Profile>) => Promise<void>;
   enableLocation: () => Promise<boolean>;
-  requestVisit: (propertyId: string, note?: string) => Promise<void>;
+  /** Demande (ou déplace) une visite à cette date ; les erreurs (créneau pris…) remontent au calendrier. */
+  requestVisit: (propertyId: string, visitAt: number, note?: string) => Promise<void>;
+  cancelVisit: (leadId: string) => Promise<void>;
+  /** Personnel Selix : confirmer, déplacer ou annuler une visite (le client est notifié). Lève l'erreur en cas de conflit. */
+  updateVisit: (leadId: string, patch: { visitAt?: number; visitStatus?: VisitStatus }) => Promise<void>;
+  busySlots: (propertyId: string) => Promise<number[]>;
   saveProperty: (p: Property) => Promise<void>;
   deleteProperty: (id: string) => Promise<void>;
   updateLead: (id: string, patch: Partial<Lead>) => Promise<void>;
@@ -167,7 +172,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       Platform.OS === 'web'
         ? null
         : Notifications.addNotificationReceivedListener((n) => {
-            if (n.request.content.data?.kind === 'match') refreshShared();
+            if (['match', 'visit'].includes(String(n.request.content.data?.kind))) refreshShared();
           });
     return () => {
       sub.remove();
@@ -373,10 +378,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return granted;
     },
 
-    async requestVisit(propertyId, note) {
+    async requestVisit(propertyId, visitAt, note) {
       if (!user) return;
-      setLeads(await api.createLead(user.id, propertyId, 'visite', note).catch((e) => (alertError(e), leads)));
+      setLeads(await api.createLead(user.id, propertyId, 'visite', note, visitAt));
     },
+
+    async cancelVisit(leadId) {
+      setLeads(await api.updateLead(leadId, { visitStatus: 'annulée' }));
+    },
+
+    async updateVisit(leadId, patch) {
+      setLeads(await api.updateLead(leadId, patch));
+    },
+
+    busySlots: (propertyId) => api.getBusySlots(propertyId).catch(() => []),
 
     async saveProperty(p) {
       setProperties(await api.saveProperty(p));

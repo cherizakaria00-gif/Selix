@@ -23,6 +23,10 @@ const LEAD_KINDS = ['like', 'visite', 'contact'];
 const LEAD_STATUSES = ['nouveau', 'contacté', 'visite planifiée', 'clôturé'];
 const DOC_KINDS = ['profile', 'chat', 'seen'];
 const APPROVALS = ['validé', 'en attente', 'refusé'];
+const VISIT_STATUSES = ['demandée', 'confirmée', 'annulée'];
+const VISIT_MAX_DAYS = 90;
+/** Une visite dure environ une heure : deux visites confirmées sur un même bien ne se chevauchent pas. */
+const VISIT_DURATION_MS = 3_600_000;
 
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Headers: Authorization, Content-Type');
@@ -181,6 +185,7 @@ function leads_for(?array $user): array
         $lead = [
             'id' => $r['id'], 'userId' => $r['user_id'], 'propertyId' => $r['property_id'], 'kind' => $r['kind'],
             'status' => $r['status'], 'note' => $r['note'], 'createdAt' => (int) $r['created_at'],
+            'visitAt' => $r['visit_at'] === null ? null : (int) $r['visit_at'], 'visitStatus' => $r['visit_status'],
         ];
         if ($staff) {
             $lead['assignedTo'] = $r['assigned_to'];
@@ -190,16 +195,41 @@ function leads_for(?array $user): array
     }, $rows);
 }
 
+/** Date de visite en millisecondes : à venir, à l'heure ou à la demie, pendant les heures d'ouverture (Maroc). */
+function clean_visit_at(mixed $v): int
+{
+    if (!is_int($v) && !is_float($v) && !(is_string($v) && ctype_digit($v))) throw new HttpError(400, 'Date de visite invalide.');
+    $ms = (int) $v;
+    $now = now_ms();
+    if ($ms < $now + 3_600_000) throw new HttpError(400, 'Choisissez un créneau dans le futur (au moins une heure à l’avance).');
+    if ($ms > $now + VISIT_MAX_DAYS * 86_400_000) throw new HttpError(400, 'Choisissez une date dans les ' . VISIT_MAX_DAYS . ' prochains jours.');
+    if ($ms % 1_800_000 !== 0) throw new HttpError(400, 'Une visite commence à l’heure pile ou à la demie.');
+    $hour = (int) (new DateTimeImmutable('@' . intdiv($ms, 1000)))->setTimezone(new DateTimeZone('Africa/Casablanca'))->format('G');
+    if ($hour < 8 || $hour >= 20) throw new HttpError(400, 'Les visites ont lieu entre 8 h et 20 h.');
+    return $ms;
+}
+
+/** Une visite est déjà confirmée sur ce bien à moins d'une heure de ce créneau (hors lead $exceptLeadId) ? */
+function visit_clash(string $propertyId, int $at, string $exceptLeadId = ''): bool
+{
+    return (bool) q(
+        "SELECT 1 FROM selix_leads WHERE property_id = ? AND id <> ? AND visit_status = 'confirmée' AND visit_at > ? AND visit_at < ?",
+        [$propertyId, $exceptLeadId, $at - VISIT_DURATION_MS, $at + VISIT_DURATION_MS],
+    )->fetchColumn();
+}
+
 /** Crée le lead d'un client, ou fait remonter l'existant si la demande est plus forte qu'un like. */
-function upsert_lead(string $userId, string $propertyId, string $kind, ?string $note = null): void
+function upsert_lead(string $userId, string $propertyId, string $kind, ?string $note = null, ?int $visitAt = null): void
 {
     $existing = q('SELECT id FROM selix_leads WHERE user_id = ? AND property_id = ?', [$userId, $propertyId])->fetchColumn();
     if (!$existing) {
-        q('INSERT INTO selix_leads (id, user_id, property_id, kind, status, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-            [new_id('l'), $userId, $propertyId, $kind, 'nouveau', $note, now_ms()]);
+        q('INSERT INTO selix_leads (id, user_id, property_id, kind, status, note, created_at, visit_at, visit_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [new_id('l'), $userId, $propertyId, $kind, 'nouveau', $note, now_ms(), $visitAt, $visitAt === null ? null : 'demandée']);
     } elseif ($kind !== 'like') {
-        q("UPDATE selix_leads SET kind = ?, status = 'nouveau', note = COALESCE(?, note), created_at = ? WHERE id = ?",
-            [$kind, $note, now_ms(), $existing]);
+        // Une nouvelle date remplace l'ancienne et repasse la visite « demandée » (à reconfirmer).
+        q("UPDATE selix_leads SET kind = ?, status = 'nouveau', note = COALESCE(?, note), created_at = ?,
+              visit_at = COALESCE(?, visit_at), visit_status = CASE WHEN ? IS NULL THEN visit_status ELSE 'demandée' END WHERE id = ?",
+            [$kind, $note, now_ms(), $visitAt, $visitAt, $existing]);
     }
 }
 
@@ -399,11 +429,30 @@ function route(string $method, string $path): mixed
             $propertyId = str_field($in, 'propertyId', 64);
             if (!find_live_property($propertyId)) throw new HttpError(404, 'Bien introuvable.');
             $note = str_field($in, 'note', 1000, false);
-            upsert_lead($u['id'], $propertyId, enum_field($in, 'kind', LEAD_KINDS), $note === '' ? null : $note);
+            $kind = enum_field($in, 'kind', LEAD_KINDS);
+            $visitAt = $kind === 'visite' && isset($in['visitAt']) ? clean_visit_at($in['visitAt']) : null;
+            if ($visitAt !== null && visit_clash($propertyId, $visitAt)) throw new HttpError(409, 'Ce créneau n’est plus disponible, choisissez-en un autre.');
+            upsert_lead($u['id'], $propertyId, $kind, $note === '' ? null : $note, $visitAt);
             return leads_for($u);
         case ['PATCH', 'leads', 2]:
-            $u = require_role('admin', 'commercial');
+            $u = require_role('admin', 'commercial', 'user');
             $lead = q('SELECT * FROM selix_leads WHERE id = ?', [$id])->fetch() ?: throw new HttpError(404, 'Lead introuvable.');
+
+            // Un client ne gère que sa propre visite : la replanifier ou l'annuler.
+            if ($u['role'] === 'user') {
+                if ($lead['user_id'] !== $u['id']) throw new HttpError(403, 'Ce lead n’est pas le vôtre.');
+                if (isset($in['visitAt'])) {
+                    $at = clean_visit_at($in['visitAt']);
+                    if (visit_clash($lead['property_id'], $at, $id)) throw new HttpError(409, 'Ce créneau n’est plus disponible, choisissez-en un autre.');
+                    q("UPDATE selix_leads SET kind = 'visite', visit_at = ?, visit_status = 'demandée', status = 'nouveau' WHERE id = ?", [$at, $id]);
+                } elseif (($in['visitStatus'] ?? null) === 'annulée' && $lead['visit_at'] !== null) {
+                    q("UPDATE selix_leads SET visit_status = 'annulée' WHERE id = ?", [$id]);
+                } else {
+                    throw new HttpError(400, 'Rien à modifier.');
+                }
+                return leads_for($u);
+            }
+
             if ($u['role'] === 'commercial' && $lead['assigned_to'] !== $u['id']) throw new HttpError(403, 'Ce lead ne vous est pas assigné.');
             if (isset($in['status'])) q('UPDATE selix_leads SET status = ? WHERE id = ?', [enum_field($in, 'status', LEAD_STATUSES), $id]);
             if (isset($in['note'])) q('UPDATE selix_leads SET note = ? WHERE id = ?', [str_field($in, 'note', 1000, false), $id]);
@@ -416,7 +465,29 @@ function route(string $method, string $path): mixed
                 }
                 q('UPDATE selix_leads SET assigned_to = ? WHERE id = ?', [$to, $id]);
             }
+            // Visite : confirmer, déplacer (nouvelle heure = confirmée) ou annuler ; le client est prévenu.
+            if (isset($in['visitAt']) || isset($in['visitStatus'])) {
+                $visitStatus = isset($in['visitStatus']) ? enum_field($in, 'visitStatus', VISIT_STATUSES) : 'confirmée';
+                $at = isset($in['visitAt']) ? clean_visit_at($in['visitAt']) : ($lead['visit_at'] === null ? null : (int) $lead['visit_at']);
+                if ($at === null) throw new HttpError(400, 'Aucune date de visite à confirmer.');
+                if ($visitStatus === 'confirmée' && visit_clash($lead['property_id'], $at, $id)) {
+                    throw new HttpError(409, 'Une autre visite est déjà confirmée sur ce bien à ce moment-là.');
+                }
+                q('UPDATE selix_leads SET visit_at = ?, visit_status = ? WHERE id = ?', [$at, $visitStatus, $id]);
+                if ($visitStatus === 'confirmée') q("UPDATE selix_leads SET status = 'visite planifiée' WHERE id = ? AND status IN ('nouveau', 'contacté')", [$id]);
+                $property = find_property($lead['property_id']);
+                if ($property && ($visitStatus !== $lead['visit_status'] || $at !== (int) $lead['visit_at'])) {
+                    after_response(fn() => notify_visit($lead['user_id'], $property, $at, $visitStatus));
+                }
+            }
             return leads_for($u);
+
+        // Créneaux déjà pris sur un bien (visites confirmées), pour griser le calendrier du client.
+        case ['GET', 'properties', 3]:
+            if ($seg[2] !== 'busy') break;
+            require_user();
+            if (!find_live_property($id)) throw new HttpError(404, 'Bien introuvable.');
+            return array_map('intval', q("SELECT visit_at FROM selix_leads WHERE property_id = ? AND visit_status = 'confirmée' AND visit_at > ?", [$id, now_ms()])->fetchAll(PDO::FETCH_COLUMN));
 
         case ['POST', 'me', 2]:
             if ($id !== 'password') break;

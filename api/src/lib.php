@@ -37,7 +37,7 @@ function new_id(string $prefix): string
 
 // ---------- Base de données ----------
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 /** Comptes créés et gérés par le super admin (les clients s'inscrivent seuls, l'admin vient du seed). */
 const STAFF_ROLES = ['commercial', 'promoteur'];
@@ -103,11 +103,15 @@ function migrate(PDO $pdo): void
     ];
     foreach ($statements as $sql) $pdo->exec($sql);
 
-    // v2 : comptes désactivables et leads assignés à un commercial. MySQL n'a pas de
-    // « ADD COLUMN IF NOT EXISTS » : on ignore l'erreur « colonne déjà présente ».
+    // Colonnes ajoutées après la v1 (v2 : comptes désactivables, leads assignés ; v3 : date de visite).
+    // MySQL n'a pas de « ADD COLUMN IF NOT EXISTS » : toute la liste est rejouée à chaque montée de
+    // version, et l'erreur « colonne déjà présente » des étapes déjà appliquées est ignorée.
     foreach ([
         'ALTER TABLE selix_users ADD COLUMN disabled TINYINT NOT NULL DEFAULT 0',
         'ALTER TABLE selix_leads ADD COLUMN assigned_to VARCHAR(64) NULL',
+        // v3 : visite demandée par le client (date + heure) et son état.
+        'ALTER TABLE selix_leads ADD COLUMN visit_at BIGINT NULL',
+        'ALTER TABLE selix_leads ADD COLUMN visit_status VARCHAR(12) NULL',
     ] as $sql) {
         try {
             $pdo->exec($sql);

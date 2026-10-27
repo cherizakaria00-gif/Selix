@@ -6,6 +6,7 @@ import { FlatList, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, 
 import { PropertyImage } from '@/components/property-card';
 import { Card, Chip, Empty, Header, Screen } from '@/components/ui';
 import { Colors, Radius } from '@/constants/theme';
+import { VisitBlock } from '@/components/visit-actions';
 import { openWhatsApp } from '@/services/geo';
 import { useApp } from '@/store/app-store';
 import type { Lead, LeadStatus } from '@/types';
@@ -133,6 +134,8 @@ function LeadCard({
       ) : (
         <Text style={[styles.meta, { marginTop: 12 }]}>Ce bien n’est plus publié.</Text>
       )}
+
+      <VisitBlock lead={lead} />
 
       {isAdmin && (
         <View style={{ marginTop: 14 }}>

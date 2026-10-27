@@ -47,6 +47,32 @@ function notify_new_property(array $property): int
     return count($messages);
 }
 
+/** « samedi 31 octobre à 10:00 », à l'heure du Maroc. */
+function format_visit_fr(int $ms): string
+{
+    $d = (new DateTimeImmutable('@' . intdiv($ms, 1000)))->setTimezone(new DateTimeZone('Africa/Casablanca'));
+    $days = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
+    $months = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+    return sprintf('%s %d %s à %s', $days[(int) $d->format('w')], (int) $d->format('j'), $months[(int) $d->format('n') - 1], $d->format('H:i'));
+}
+
+/** Prévient le client quand Selix confirme ou annule sa visite. */
+function notify_visit(string $userId, array $property, int $visitAt, string $status): int
+{
+    if ($status === 'demandée') return 0;
+    $tokens = q('SELECT token FROM selix_push_tokens WHERE user_id = ?', [$userId])->fetchAll(PDO::FETCH_COLUMN);
+    if (!$tokens) return 0;
+    $when = format_visit_fr($visitAt);
+    [$title, $body] = $status === 'confirmée'
+        ? ['Visite confirmée', "{$property['title']} · $when. Un commercial Selix vous y attend."]
+        : ['Visite annulée', "Votre visite de {$property['title']} prévue $when est annulée. Vous pouvez en demander une autre."];
+    send_expo_push(array_map(fn($t) => [
+        'to' => $t, 'title' => $title, 'body' => $body, 'sound' => 'default', 'channelId' => 'matches',
+        'data' => ['propertyId' => $property['id'], 'kind' => 'visit'],
+    ], $tokens));
+    return count($tokens);
+}
+
 function send_expo_push(array $messages): void
 {
     $ch = curl_init(config('expo_push_url') ?: 'https://exp.host/--/api/v2/push/send');

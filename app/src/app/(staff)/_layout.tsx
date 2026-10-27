@@ -24,6 +24,7 @@ export default function StaffLayout() {
   const toValidate = properties.filter((p) => p.approval === 'en attente').length;
   const toAssign = leads.filter((l) => !l.assignedTo).length;
   const fresh = leads.filter((l) => l.status === 'nouveau').length;
+  const visitsToConfirm = leads.filter((l) => l.visitStatus === 'demandée').length;
 
   return (
     <Tabs
@@ -49,6 +50,15 @@ export default function StaffLayout() {
           tabBarBadge: (role === 'admin' ? toAssign : fresh) || undefined,
           tabBarIcon: tabIcon('people'),
           ...hide(role !== 'promoteur'),
+        }}
+      />
+      <Tabs.Screen
+        name="agenda"
+        options={{
+          title: 'Agenda',
+          tabBarBadge: visitsToConfirm || undefined,
+          tabBarIcon: tabIcon('calendar'),
+          ...hide(role === 'admin' || role === 'commercial'),
         }}
       />
       <Tabs.Screen name="team" options={{ title: 'Équipe', tabBarIcon: tabIcon('people-circle'), ...hide(role === 'admin') }} />
