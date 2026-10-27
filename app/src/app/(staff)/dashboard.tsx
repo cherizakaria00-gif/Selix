@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { Redirect, router } from 'expo-router';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { PropertyRow } from '@/components/property-card';
@@ -12,14 +12,22 @@ import { timeAgo } from '@/utils/format';
 export default function Dashboard() {
   const { properties, swipes, leads, users, user } = useApp();
   const desktop = useIsDesktop();
+  if (user?.role !== 'admin') return <Redirect href="/" />;
   const clients = users.filter((u) => u.role === 'user');
   const likes = swipes.filter((s) => s.action !== 'dislike');
   const rate = swipes.length ? Math.round((likes.length / swipes.length) * 100) : 0;
 
   const stats: { icon: IconName; label: string; value: string | number; color: string }[] = [
-    { icon: 'business', label: 'Biens actifs', value: properties.filter((p) => p.status === 'disponible').length, color: Colors.primary },
+    {
+      icon: 'business',
+      label: 'Biens actifs',
+      value: properties.filter((p) => p.status === 'disponible' && (p.approval ?? 'validé') === 'validé').length,
+      color: Colors.primary,
+    },
+    { icon: 'time', label: 'Biens à valider', value: properties.filter((p) => p.approval === 'en attente').length, color: Colors.gold },
     { icon: 'people', label: 'Clients', value: clients.length, color: Colors.star },
     { icon: 'flame', label: 'Leads nouveaux', value: leads.filter((l) => l.status === 'nouveau').length, color: Colors.orange },
+    { icon: 'person-add', label: 'Leads à assigner', value: leads.filter((l) => !l.assignedTo).length, color: Colors.magenta },
     { icon: 'heart', label: 'Taux de like', value: `${rate}%`, color: Colors.like },
   ];
 
@@ -110,7 +118,7 @@ const styles = StyleSheet.create({
   sub: { color: Colors.textMuted, fontSize: 14, marginTop: 4 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 20 },
   stat: { width: '47%', flexGrow: 1, gap: 6 },
-  statDesktop: { width: '22%' },
+  statDesktop: { width: '15%' },
   statIcon: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
   statValue: { color: '#fff', fontSize: 26, fontWeight: '800' },
   statLabel: { color: Colors.textMuted, fontSize: 12 },

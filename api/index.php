@@ -22,6 +22,7 @@ const SWIPE_ACTIONS = ['like', 'dislike', 'superlike'];
 const LEAD_KINDS = ['like', 'visite', 'contact'];
 const LEAD_STATUSES = ['nouveau', 'contacté', 'visite planifiée', 'clôturé'];
 const DOC_KINDS = ['profile', 'chat', 'seen'];
+const APPROVALS = ['validé', 'en attente', 'refusé'];
 
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Headers: Authorization, Content-Type');
@@ -36,6 +37,61 @@ function all_properties(): array
         fn($r) => json_decode($r['data'], true),
         q('SELECT data FROM selix_properties ORDER BY created_at DESC')->fetchAll(),
     );
+}
+
+/** Un bien sans champ « approval » (créé avant les promoteurs) est un bien Selix validé. */
+function approval_of(array $p): string
+{
+    return $p['approval'] ?? 'validé';
+}
+
+function is_owner(?array $viewer, array $p): bool
+{
+    return $viewer !== null && ($p['ownerId'] ?? null) === $viewer['id'];
+}
+
+/**
+ * Biens que ce visiteur a le droit de voir : le super admin voit tout, un promoteur voit
+ * les siens (même en attente) et les biens publiés, tous les autres seulement les biens
+ * publiés. Le propriétaire et l'état de validation ne sont montrés qu'à qui doit les voir.
+ */
+function visible_properties(?array $viewer): array
+{
+    $admin = $viewer !== null && $viewer['role'] === 'admin';
+    $out = [];
+    foreach (all_properties() as $p) {
+        $mine = is_owner($viewer, $p);
+        if (!$admin && !$mine && approval_of($p) !== 'validé') continue;
+        if (!$admin && !$mine) unset($p['ownerId'], $p['approval'], $p['rejectionReason']);
+        $out[] = $p;
+    }
+    return $out;
+}
+
+/** Biens qu'un compte gère : tous pour le super admin, les siens pour un promoteur. */
+function managed_properties(array $user): array
+{
+    return array_values(array_filter(
+        all_properties(),
+        fn($p) => $user['role'] === 'admin' || is_owner($user, $p),
+    ));
+}
+
+function save_property(array $p): void
+{
+    q('REPLACE INTO selix_properties (id, data, created_at) VALUES (?, ?, ?)', [$p['id'], json_encode($p, JSON_UNESCAPED_UNICODE), $p['createdAt']]);
+}
+
+/** Les clients ne peuvent aimer ou demander une visite que pour un bien publié. */
+function find_live_property(string $id): ?array
+{
+    $p = find_property($id);
+    return $p && approval_of($p) === 'validé' ? $p : null;
+}
+
+function default_agent_phone(): string
+{
+    return (string) (config('default_agent_phone') ?: '+212522000000');
 }
 
 function find_property(string $id): ?array
@@ -110,13 +166,28 @@ function swipes_for(?array $user): array
 function leads_for(?array $user): array
 {
     if (!$user) return [];
-    $rows = $user['role'] === 'admin'
-        ? q('SELECT * FROM selix_leads ORDER BY created_at DESC')->fetchAll()
-        : q('SELECT * FROM selix_leads WHERE user_id = ? ORDER BY created_at DESC', [$user['id']])->fetchAll();
-    return array_map(fn($r) => array_filter([
-        'id' => $r['id'], 'userId' => $r['user_id'], 'propertyId' => $r['property_id'], 'kind' => $r['kind'],
-        'status' => $r['status'], 'note' => $r['note'], 'createdAt' => (int) $r['created_at'],
-    ], fn($v) => $v !== null), $rows);
+    $base = 'SELECT l.*, u.name AS c_name, u.phone AS c_phone, u.email AS c_email
+             FROM selix_leads l LEFT JOIN selix_users u ON u.id = l.user_id';
+    $rows = match ($user['role']) {
+        'admin' => q("$base ORDER BY l.created_at DESC")->fetchAll(),
+        // Un commercial ne voit que les leads que le super admin lui a assignés.
+        'commercial' => q("$base WHERE l.assigned_to = ? ORDER BY l.created_at DESC", [$user['id']])->fetchAll(),
+        // Un promoteur n'accède jamais aux coordonnées des clients : voir /stats/properties.
+        'promoteur' => [],
+        default => q("$base WHERE l.user_id = ? ORDER BY l.created_at DESC", [$user['id']])->fetchAll(),
+    };
+    $staff = in_array($user['role'], ['admin', 'commercial'], true);
+    return array_map(function ($r) use ($staff) {
+        $lead = [
+            'id' => $r['id'], 'userId' => $r['user_id'], 'propertyId' => $r['property_id'], 'kind' => $r['kind'],
+            'status' => $r['status'], 'note' => $r['note'], 'createdAt' => (int) $r['created_at'],
+        ];
+        if ($staff) {
+            $lead['assignedTo'] = $r['assigned_to'];
+            $lead['client'] = ['name' => $r['c_name'] ?? 'Client supprimé', 'phone' => $r['c_phone'] ?? '', 'email' => $r['c_email'] ?? ''];
+        }
+        return array_filter($lead, fn($v) => $v !== null);
+    }, $rows);
 }
 
 /** Crée le lead d'un client, ou fait remonter l'existant si la demande est plus forte qu'un like. */
@@ -153,6 +224,7 @@ function route(string $method, string $path): mixed
                 if (!$row || !password_verify((string) ($in['password'] ?? ''), $row['password_hash'])) {
                     throw new HttpError(401, 'Email ou mot de passe incorrect.');
                 }
+                if ((int) ($row['disabled'] ?? 0)) throw new HttpError(403, 'Ce compte est désactivé. Contactez Selix.');
                 if (password_needs_rehash($row['password_hash'], PASSWORD_DEFAULT)) {
                     q('UPDATE selix_users SET password_hash = ? WHERE id = ?', [password_hash($in['password'], PASSWORD_DEFAULT), $row['id']]);
                 }
@@ -189,26 +261,118 @@ function route(string $method, string $path): mixed
             if (($u['role'] ?? null) !== 'admin') return [];
             return array_map('public_user', q('SELECT * FROM selix_users ORDER BY created_at')->fetchAll());
 
-        // --- Biens (lecture publique, écriture admin) ---
-        case ['GET', 'properties', 1]:
-            return all_properties();
-        case ['PUT', 'properties', 2]:
+        // --- Comptes du personnel (commerciaux, promoteurs) : réservé au super admin ---
+        case ['POST', 'users', 1]:
             require_admin();
+            $email = strtolower(str_field($in, 'email', 190));
+            if (!filter_var($email, FILTER_VALIDATE_EMAIL)) throw new HttpError(400, 'Adresse email invalide.');
+            $password = (string) ($in['password'] ?? '');
+            if (mb_strlen($password) < 8) throw new HttpError(400, 'Le mot de passe doit faire au moins 8 caractères.');
+            if (q('SELECT 1 FROM selix_users WHERE email = ?', [$email])->fetchColumn()) throw new HttpError(409, 'Un compte existe déjà avec cet email.');
+            $row = [
+                'id' => new_id('u'), 'name' => str_field($in, 'name', 190), 'email' => $email,
+                'phone' => str_field($in, 'phone', 40, false), 'role' => enum_field($in, 'role', STAFF_ROLES),
+                'disabled' => 0, 'created_at' => now_ms(),
+            ];
+            q('INSERT INTO selix_users (id, name, email, phone, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                [$row['id'], $row['name'], $email, $row['phone'], password_hash($password, PASSWORD_DEFAULT), $row['role'], $row['created_at']]);
+            return public_user($row);
+        case ['PATCH', 'users', 2]:
+            $admin = require_admin();
+            $row = q('SELECT * FROM selix_users WHERE id = ?', [$id])->fetch() ?: throw new HttpError(404, 'Compte introuvable.');
+            // On ne touche ni aux clients ni au super admin (pas de risque de se verrouiller dehors).
+            if (!in_array($row['role'], STAFF_ROLES, true)) throw new HttpError(403, 'Seuls les comptes du personnel sont modifiables.');
+            $name = array_key_exists('name', $in) ? str_field($in, 'name', 190) : $row['name'];
+            $phone = array_key_exists('phone', $in) ? str_field($in, 'phone', 40, false) : $row['phone'];
+            $role = array_key_exists('role', $in) ? enum_field($in, 'role', STAFF_ROLES) : $row['role'];
+            $disabled = array_key_exists('disabled', $in) ? (int) (bool) $in['disabled'] : (int) $row['disabled'];
+            q('UPDATE selix_users SET name = ?, phone = ?, role = ?, disabled = ? WHERE id = ?', [$name, $phone, $role, $disabled, $id]);
+            if (!empty($in['password'])) {
+                if (mb_strlen((string) $in['password']) < 8) throw new HttpError(400, 'Le mot de passe doit faire au moins 8 caractères.');
+                q('UPDATE selix_users SET password_hash = ? WHERE id = ?', [password_hash((string) $in['password'], PASSWORD_DEFAULT), $id]);
+                q('DELETE FROM selix_tokens WHERE user_id = ?', [$id]);
+            }
+            // Un compte désactivé est déconnecté partout, et un commercial qui n'en est plus un
+            // rend ses leads : ils retournent dans la liste « à assigner ».
+            if ($disabled) q('DELETE FROM selix_tokens WHERE user_id = ?', [$id]);
+            if ($disabled || $role !== 'commercial') q('UPDATE selix_leads SET assigned_to = NULL WHERE assigned_to = ?', [$id]);
+            return public_user(q('SELECT * FROM selix_users WHERE id = ?', [$id])->fetch());
+
+        // --- Biens : lecture publique des biens publiés, écriture admin et promoteurs ---
+        case ['GET', 'properties', 1]:
+            return visible_properties(current_user());
+        case ['PUT', 'properties', 2]:
+            $u = require_role('admin', 'promoteur');
             $existing = find_property($id);
+            if ($u['role'] === 'promoteur' && $existing && !is_owner($u, $existing)) throw new HttpError(403, 'Ce bien ne vous appartient pas.');
             $p = clean_property($id, $in, $existing);
-            q('REPLACE INTO selix_properties (id, data, created_at) VALUES (?, ?, ?)', [$id, json_encode($p, JSON_UNESCAPED_UNICODE), $p['createdAt']]);
-            // Nouveau bien, ou bien qui redevient disponible : on prévient les clients concernés.
-            if (!$existing || ($existing['status'] !== 'disponible' && $p['status'] === 'disponible')) {
+            if ($u['role'] === 'promoteur') {
+                // Le contact reste celui de Selix ; un bien neuf ou modifié repasse en validation
+                // (un simple changement de statut disponible / réservé / vendu n'en a pas besoin).
+                $p['agentPhone'] = $existing['agentPhone'] ?? default_agent_phone();
+                $p['ownerId'] = $u['id'];
+                $content = fn(array $x) => array_diff_key($x, ['status' => 1, 'approval' => 1, 'rejectionReason' => 1]);
+                if (!$existing || $content($p) != $content($existing)) {
+                    $p['approval'] = 'en attente';
+                } else {
+                    $p['approval'] = approval_of($existing);
+                    if (isset($existing['rejectionReason'])) $p['rejectionReason'] = $existing['rejectionReason'];
+                }
+            } else {
+                foreach (['ownerId', 'approval', 'rejectionReason'] as $k) if (isset($existing[$k])) $p[$k] = $existing[$k];
+                if (!$existing) $p['approval'] = 'validé';
+            }
+            save_property($p);
+            // Un bien publié, ou qui redevient disponible : on prévient les clients concernés.
+            $wasLive = $existing && approval_of($existing) === 'validé';
+            if (approval_of($p) === 'validé' && (!$wasLive || ($existing['status'] !== 'disponible' && $p['status'] === 'disponible'))) {
                 after_response(fn() => notify_new_property($p));
             }
-            return all_properties();
+            return visible_properties($u);
+        case ['POST', 'properties', 3]:
+            if ($seg[2] !== 'approval') break;
+            $u = require_admin();
+            $p = find_property($id) ?: throw new HttpError(404, 'Bien introuvable.');
+            $approval = enum_field($in, 'approval', ['validé', 'refusé']);
+            $wasLive = approval_of($p) === 'validé';
+            $p['approval'] = $approval;
+            $reason = str_field($in, 'reason', 500, false);
+            if ($approval === 'refusé' && $reason !== '') $p['rejectionReason'] = $reason;
+            else unset($p['rejectionReason']);
+            save_property($p);
+            if ($approval === 'validé' && !$wasLive) after_response(fn() => notify_new_property($p));
+            return visible_properties($u);
         case ['DELETE', 'properties', 2]:
-            require_admin();
+            $u = require_role('admin', 'promoteur');
+            $existing = find_property($id);
+            if ($existing && $u['role'] === 'promoteur' && !is_owner($u, $existing)) throw new HttpError(403, 'Ce bien ne vous appartient pas.');
             q('DELETE FROM selix_properties WHERE id = ?', [$id]);
-            return all_properties();
+            return visible_properties($u);
+
+        // Statistiques par bien, sans aucune donnée client : pour les promoteurs (leurs biens) et le super admin.
+        case ['GET', 'stats', 2]:
+            if ($id !== 'properties') break;
+            $u = require_role('admin', 'promoteur');
+            $stats = [];
+            foreach (managed_properties($u) as $p) $stats[$p['id']] = ['propertyId' => $p['id'], 'views' => 0, 'likes' => 0, 'superlikes' => 0, 'visits' => 0];
+            foreach (q("SELECT property_id, COUNT(*) AS views,
+                               SUM(CASE WHEN action <> 'dislike' THEN 1 ELSE 0 END) AS likes,
+                               SUM(CASE WHEN action = 'superlike' THEN 1 ELSE 0 END) AS superlikes
+                        FROM selix_swipes GROUP BY property_id")->fetchAll() as $r) {
+                if (isset($stats[$r['property_id']])) {
+                    $stats[$r['property_id']] = array_merge($stats[$r['property_id']], [
+                        'views' => (int) $r['views'], 'likes' => (int) $r['likes'], 'superlikes' => (int) $r['superlikes'],
+                    ]);
+                }
+            }
+            foreach (q("SELECT property_id, COUNT(*) AS n FROM selix_leads WHERE kind = 'visite' GROUP BY property_id")->fetchAll() as $r) {
+                if (isset($stats[$r['property_id']])) $stats[$r['property_id']]['visits'] = (int) $r['n'];
+            }
+            return array_values($stats);
 
         case ['POST', 'photos', 1]:
-            require_admin();
+            $u = require_role('admin', 'promoteur');
+            if ($u['role'] === 'promoteur') rate_limit('photo:' . $u['id'], 150, 3600);
             return handle_upload();
 
         // --- Swipes & leads ---
@@ -218,7 +382,7 @@ function route(string $method, string $path): mixed
             $u = require_user();
             $action = enum_field($in, 'action', SWIPE_ACTIONS);
             $propertyId = str_field($in, 'propertyId', 64);
-            if (!find_property($propertyId)) throw new HttpError(404, 'Bien introuvable.');
+            if (!find_live_property($propertyId)) throw new HttpError(404, 'Bien introuvable.');
             q('REPLACE INTO selix_swipes (user_id, property_id, action, at) VALUES (?, ?, ?, ?)', [$u['id'], $propertyId, $action, now_ms()]);
             // Un like = un lead pour l'équipe commerciale.
             if ($action !== 'dislike') upsert_lead($u['id'], $propertyId, 'like');
@@ -233,15 +397,40 @@ function route(string $method, string $path): mixed
         case ['POST', 'leads', 1]:
             $u = require_user();
             $propertyId = str_field($in, 'propertyId', 64);
-            if (!find_property($propertyId)) throw new HttpError(404, 'Bien introuvable.');
+            if (!find_live_property($propertyId)) throw new HttpError(404, 'Bien introuvable.');
             $note = str_field($in, 'note', 1000, false);
             upsert_lead($u['id'], $propertyId, enum_field($in, 'kind', LEAD_KINDS), $note === '' ? null : $note);
             return leads_for($u);
         case ['PATCH', 'leads', 2]:
-            $u = require_admin();
+            $u = require_role('admin', 'commercial');
+            $lead = q('SELECT * FROM selix_leads WHERE id = ?', [$id])->fetch() ?: throw new HttpError(404, 'Lead introuvable.');
+            if ($u['role'] === 'commercial' && $lead['assigned_to'] !== $u['id']) throw new HttpError(403, 'Ce lead ne vous est pas assigné.');
             if (isset($in['status'])) q('UPDATE selix_leads SET status = ? WHERE id = ?', [enum_field($in, 'status', LEAD_STATUSES), $id]);
             if (isset($in['note'])) q('UPDATE selix_leads SET note = ? WHERE id = ?', [str_field($in, 'note', 1000, false), $id]);
+            if (array_key_exists('assignedTo', $in)) {
+                if ($u['role'] !== 'admin') throw new HttpError(403, "Seul le super admin assigne les leads.");
+                $to = $in['assignedTo'];
+                if ($to !== null) {
+                    $ok = q("SELECT 1 FROM selix_users WHERE id = ? AND role = 'commercial' AND disabled = 0", [(string) $to])->fetchColumn();
+                    if (!$ok) throw new HttpError(400, 'Commercial introuvable ou désactivé.');
+                }
+                q('UPDATE selix_leads SET assigned_to = ? WHERE id = ?', [$to, $id]);
+            }
             return leads_for($u);
+
+        case ['POST', 'me', 2]:
+            if ($id !== 'password') break;
+            $u = require_user();
+            rate_limit('pwd:' . $u['id'], 10, 900);
+            $row = q('SELECT * FROM selix_users WHERE id = ?', [$u['id']])->fetch();
+            if (!password_verify((string) ($in['current'] ?? ''), $row['password_hash'])) throw new HttpError(401, 'Mot de passe actuel incorrect.');
+            $new = (string) ($in['next'] ?? '');
+            $min = $u['role'] === 'user' ? 6 : 8;
+            if (mb_strlen($new) < $min) throw new HttpError(400, "Le nouveau mot de passe doit faire au moins $min caractères.");
+            q('UPDATE selix_users SET password_hash = ? WHERE id = ?', [password_hash($new, PASSWORD_DEFAULT), $u['id']]);
+            // Les autres appareils connectés sont déconnectés ; celui-ci reste ouvert.
+            q('DELETE FROM selix_tokens WHERE user_id = ? AND token_hash <> ?', [$u['id'], hash('sha256', (string) bearer_token())]);
+            return ['ok' => true];
 
         // --- Profil IA, chat, biens déjà vus : documents JSON propres à l'utilisateur ---
         case ['GET', 'me', 2]:

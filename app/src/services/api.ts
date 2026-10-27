@@ -11,7 +11,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
-import type { ChatMessage, Lead, Profile, Property, Swipe, SwipeAction, User } from '@/types';
+import type { Approval, ChatMessage, Lead, Profile, Property, PropertyStats, StaffRole, Swipe, SwipeAction, User } from '@/types';
 
 export const API_URL = (process.env.EXPO_PUBLIC_SELIX_API_URL ?? '').replace(/\/+$/, '');
 
@@ -167,6 +167,35 @@ export function deleteProperty(id: string): Promise<Property[]> {
   return request<Property[]>('DELETE', `/properties/${encodeURIComponent(id)}`);
 }
 
+/** Super admin : valide ou refuse (avec un motif) un bien déposé par un promoteur. */
+export function setPropertyApproval(id: string, approval: Exclude<Approval, 'en attente'>, reason?: string): Promise<Property[]> {
+  return request<Property[]>('POST', `/properties/${encodeURIComponent(id)}/approval`, { approval, reason });
+}
+
+/** Vus / likes / demandes de visite par bien (promoteur : ses biens ; admin : tous). */
+export function getPropertyStats(): Promise<PropertyStats[]> {
+  return cachedGet<PropertyStats[]>('/stats/properties', []);
+}
+
+// ---------- Comptes du personnel (super admin) ----------
+
+export type StaffInput = { name: string; email: string; phone: string; password: string; role: StaffRole };
+
+export function createStaffUser(input: StaffInput): Promise<User> {
+  return request<User>('POST', '/users', input);
+}
+
+export function updateStaffUser(
+  id: string,
+  patch: Partial<Pick<User, 'name' | 'phone' | 'disabled'>> & { role?: StaffRole; password?: string },
+): Promise<User> {
+  return request<User>('PATCH', `/users/${encodeURIComponent(id)}`, patch);
+}
+
+export async function changePassword(current: string, next: string) {
+  await request('POST', '/me/password', { current, next });
+}
+
 // ---------- Swipes & leads ----------
 // Le serveur identifie l'utilisateur par son jeton : les paramètres userId sont
 // gardés pour la lisibilité des appels mais ne sont pas transmis.
@@ -193,7 +222,12 @@ export function createLead(_userId: string, propertyId: string, kind: Lead['kind
 }
 
 export function updateLead(id: string, patch: Partial<Lead>): Promise<Lead[]> {
-  return request<Lead[]>('PATCH', `/leads/${encodeURIComponent(id)}`, { status: patch.status, note: patch.note });
+  // assignedTo: null = désassigner ; absent = ne pas toucher à l'assignation.
+  return request<Lead[]>('PATCH', `/leads/${encodeURIComponent(id)}`, {
+    status: patch.status,
+    note: patch.note,
+    ...('assignedTo' in patch ? { assignedTo: patch.assignedTo ?? null } : null),
+  });
 }
 
 // ---------- Profil IA, chat, biens déjà notifiés ----------

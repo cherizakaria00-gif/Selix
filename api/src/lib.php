@@ -37,7 +37,10 @@ function new_id(string $prefix): string
 
 // ---------- Base de données ----------
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
+
+/** Comptes créés et gérés par le super admin (les clients s'inscrivent seuls, l'admin vient du seed). */
+const STAFF_ROLES = ['commercial', 'promoteur'];
 
 function db(): PDO
 {
@@ -99,6 +102,19 @@ function migrate(PDO $pdo): void
             k VARCHAR(190) PRIMARY KEY, start BIGINT NOT NULL, n INT NOT NULL)',
     ];
     foreach ($statements as $sql) $pdo->exec($sql);
+
+    // v2 : comptes désactivables et leads assignés à un commercial. MySQL n'a pas de
+    // « ADD COLUMN IF NOT EXISTS » : on ignore l'erreur « colonne déjà présente ».
+    foreach ([
+        'ALTER TABLE selix_users ADD COLUMN disabled TINYINT NOT NULL DEFAULT 0',
+        'ALTER TABLE selix_leads ADD COLUMN assigned_to VARCHAR(64) NULL',
+    ] as $sql) {
+        try {
+            $pdo->exec($sql);
+        } catch (PDOException $e) {
+            if (!str_contains(strtolower($e->getMessage()), 'duplicate column')) throw $e;
+        }
+    }
 
     if (!(int) $pdo->query('SELECT COUNT(*) FROM selix_users')->fetchColumn()) seed($pdo);
     $pdo->exec('DELETE FROM selix_meta');
@@ -166,6 +182,7 @@ function public_user(array $row): array
         'email' => $row['email'],
         'phone' => $row['phone'],
         'role' => $row['role'],
+        'disabled' => (bool) ($row['disabled'] ?? 0),
         'createdAt' => (int) $row['created_at'],
     ];
 }
@@ -193,7 +210,7 @@ function current_user(): ?array
     if ($user !== false) return $user;
     $token = bearer_token();
     $row = $token ? q(
-        'SELECT u.* FROM selix_tokens t JOIN selix_users u ON u.id = t.user_id WHERE t.token_hash = ?',
+        'SELECT u.* FROM selix_tokens t JOIN selix_users u ON u.id = t.user_id WHERE t.token_hash = ? AND u.disabled = 0',
         [hash('sha256', $token)],
     )->fetch() : null;
     return $user = $row ? public_user($row) : null;
@@ -208,5 +225,13 @@ function require_admin(): array
 {
     $u = require_user();
     if ($u['role'] !== 'admin') throw new HttpError(403, 'Réservé aux administrateurs.');
+    return $u;
+}
+
+/** Connecté avec l'un des rôles donnés (« admin » est le super admin). */
+function require_role(string ...$roles): array
+{
+    $u = require_user();
+    if (!in_array($u['role'], $roles, true)) throw new HttpError(403, 'Accès refusé.');
     return $u;
 }

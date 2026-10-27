@@ -1,7 +1,11 @@
 export type Transaction = 'location' | 'achat';
 export type PropertyType = 'appartement' | 'villa' | 'studio' | 'riad' | 'bureau' | 'terrain';
 export type PropertyStatus = 'disponible' | 'réservé' | 'vendu';
-export type Role = 'user' | 'admin';
+/** « admin » est le super admin ; commerciaux et promoteurs sont créés par lui. */
+export type Role = 'user' | 'admin' | 'commercial' | 'promoteur';
+export type StaffRole = 'commercial' | 'promoteur';
+/** Un bien déposé par un promoteur n'est publié qu'après validation du super admin. */
+export type Approval = 'validé' | 'en attente' | 'refusé';
 
 export type Property = {
   id: string;
@@ -28,7 +32,15 @@ export type Property = {
   status: PropertyStatus;
   agentPhone: string;
   createdAt: number;
+  /** Promoteur propriétaire (vu seulement du propriétaire et du super admin). */
+  ownerId?: string;
+  /** Absent = bien Selix déjà publié. */
+  approval?: Approval;
+  rejectionReason?: string;
 };
+
+/** Statistiques d'un bien, sans aucune donnée client (promoteurs et super admin). */
+export type PropertyStats = { propertyId: string; views: number; likes: number; superlikes: number; visits: number };
 
 export type User = {
   id: string;
@@ -38,6 +50,7 @@ export type User = {
   /** Seulement à l'inscription : le serveur le hache et ne le renvoie jamais. */
   password?: string;
   role: Role;
+  disabled?: boolean;
   createdAt: number;
 };
 
@@ -83,6 +96,9 @@ export type Lead = {
   status: LeadStatus;
   note?: string;
   createdAt: number;
+  /** Commercial à qui le super admin a confié le lead (vu du personnel seulement). */
+  assignedTo?: string;
+  client?: { name: string; phone: string; email: string };
 };
 
 export type ChatMessage = {

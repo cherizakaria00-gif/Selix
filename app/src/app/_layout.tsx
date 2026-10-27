@@ -52,7 +52,7 @@ export default function RootLayout() {
             <Stack.Screen name="index" />
             <Stack.Screen name="(auth)" />
             <Stack.Screen name="(user)" />
-            <Stack.Screen name="(admin)" />
+            <Stack.Screen name="(staff)" />
             <Stack.Screen name="property/[id]" options={{ animation: 'slide_from_bottom' }} />
             <Stack.Screen name="edit-property" options={{ presentation: 'modal' }} />
           </Stack>

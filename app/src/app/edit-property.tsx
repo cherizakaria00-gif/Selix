@@ -1,10 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
-import { useLocalSearchParams } from 'expo-router';
+import { Redirect, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { ApprovalBadge, approvalOf } from '@/components/approval';
 import { MapView, Marker, type MapPressEvent } from '@/components/maps';
 import { PropertyImage } from '@/components/property-card';
 import { Chip, Field, GradientButton, Header, Screen } from '@/components/ui';
@@ -50,7 +51,7 @@ const num = (v: string) => Number(v.replace(/[^\d]/g, '')) || 0;
 
 export default function EditProperty() {
   const { id } = useLocalSearchParams<{ id?: string }>();
-  const { properties, saveProperty, deleteProperty } = useApp();
+  const { user, properties, saveProperty, deleteProperty } = useApp();
   const existing = properties.find((p) => p.id === id);
   const [p, setP] = useState<Property>(() => existing ?? blank());
   // Ouvert par son adresse (rechargement, lien direct), le bien arrive après le premier
@@ -81,6 +82,11 @@ export default function EditProperty() {
     setP((prev) => ({ ...prev, latitude: loc.coords.latitude, longitude: loc.coords.longitude }));
   }
 
+  const isPromoter = user?.role === 'promoteur';
+  if (!user || (user.role !== 'admin' && !isPromoter)) return <Redirect href="/" />;
+  // Un promoteur n'accède qu'à ses propres biens.
+  if (isPromoter && existing && existing.ownerId !== user.id) return <Redirect href="/properties" />;
+
   async function save() {
     const missing = [
       !p.title.trim() && 'titre',
@@ -93,6 +99,14 @@ export default function EditProperty() {
     setSaving(true);
     try {
       await saveProperty({ ...p, title: p.title.trim(), district: p.district.trim() });
+      if (isPromoter) {
+        notify(
+          existing ? 'Modifications enregistrées' : 'Bien envoyé pour validation',
+          existing
+            ? 'Si le contenu du bien a changé, il repasse en validation avant d’être republié.'
+            : 'Il sera publié aux clients dès que l’équipe Selix l’aura validé.',
+        );
+      }
       goBack('/properties');
     } catch (e) {
       notify('Enregistrement impossible', e instanceof Error ? e.message : String(e));
@@ -123,6 +137,24 @@ export default function EditProperty() {
       />
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
+          {existing?.approval && (
+            <View style={styles.banner}>
+              <ApprovalBadge approval={approvalOf(existing)} />
+              {existing.approval === 'refusé' && (
+                <Text style={styles.bannerText}>
+                  Motif : {existing.rejectionReason || 'non précisé'}. Corrigez puis enregistrez pour soumettre à nouveau.
+                </Text>
+              )}
+              {existing.approval === 'en attente' && (
+                <Text style={styles.bannerText}>Ce bien n’est pas encore visible des clients : l’équipe Selix doit le valider.</Text>
+              )}
+            </View>
+          )}
+          {isPromoter && !existing && (
+            <View style={styles.banner}>
+              <Text style={styles.bannerText}>Votre bien sera publié aux clients après validation par l’équipe Selix.</Text>
+            </View>
+          )}
           <Text style={styles.label}>Photos</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, marginBottom: 16 }}>
             {p.images.map((src, i) => (
@@ -221,7 +253,9 @@ export default function EditProperty() {
             onChangeText={(v) => set('description', v)}
             placeholder="Points forts, environnement, finitions…"
           />
-          <Field label="Téléphone du commercial" keyboardType="phone-pad" value={p.agentPhone} onChangeText={(v) => set('agentPhone', v)} />
+          {!isPromoter && (
+            <Field label="Téléphone du commercial" keyboardType="phone-pad" value={p.agentPhone} onChangeText={(v) => set('agentPhone', v)} />
+          )}
 
           <Text style={styles.label}>Position du bien (pour les alertes de proximité)</Text>
           <Text style={styles.help}>Touchez la carte pour placer le bien, ou utilisez votre position si vous êtes sur place.</Text>
@@ -254,7 +288,18 @@ export default function EditProperty() {
             ))}
           </View>
 
-          <GradientButton label={existing ? 'Enregistrer' : 'Publier le bien'} icon="checkmark" loading={saving} onPress={save} />
+          {isPromoter && existing && (
+            <Text style={styles.hint}>
+              Modifier le prix, les photos, la description ou la position renvoie le bien en validation. Un simple changement de statut
+              (disponible, réservé, vendu) reste publié.
+            </Text>
+          )}
+          <GradientButton
+            label={isPromoter ? (existing ? 'Enregistrer' : 'Envoyer pour validation') : existing ? 'Enregistrer' : 'Publier le bien'}
+            icon="checkmark"
+            loading={saving}
+            onPress={save}
+          />
           {existing && <GradientButton label="Supprimer" variant="danger" onPress={remove} style={{ marginTop: 12 }} />}
         </ScrollView>
       </KeyboardAvoidingView>
@@ -263,6 +308,18 @@ export default function EditProperty() {
 }
 
 const styles = StyleSheet.create({
+  banner: {
+    gap: 8,
+    alignItems: 'flex-start',
+    padding: 12,
+    marginBottom: 16,
+    borderRadius: Radius.md,
+    backgroundColor: 'rgba(208,76,224,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(208,76,224,0.3)',
+  },
+  bannerText: { color: Colors.text, fontSize: 13, lineHeight: 18 },
+  hint: { color: Colors.textMuted, fontSize: 12, lineHeight: 17, marginBottom: 12 },
   label: { color: '#fff', fontSize: 14, fontWeight: '600', marginBottom: 8, marginTop: 4 },
   help: { color: Colors.textMuted, fontSize: 12, marginBottom: 10 },
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },

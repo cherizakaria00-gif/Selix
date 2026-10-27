@@ -7,12 +7,21 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Logo, type IconName } from '@/components/ui';
 import { Colors, Gradients, Radius } from '@/constants/theme';
 import { useApp } from '@/store/app-store';
+import type { Role } from '@/types';
+
+const ROLE_LABEL: Record<Role, string> = {
+  admin: 'Super admin',
+  commercial: 'Espace commercial',
+  promoteur: 'Espace promoteur',
+  user: 'Client',
+};
 
 const ICONS: Record<string, IconName> = {
   dashboard: 'grid',
   properties: 'business',
   leads: 'people',
   settings: 'settings',
+  team: 'people-circle',
 };
 
 /** Menu latéral du tableau de bord admin sur grand écran (app.selix.io). */
@@ -23,12 +32,13 @@ export function AdminSidebar({ state, descriptors, navigateToTab }: BottomTabBar
     <View style={styles.sidebar}>
       <View style={styles.brand}>
         <Logo height={34} />
-        <Text style={styles.brandSub}>Administration</Text>
+        <Text style={styles.brandSub}>{ROLE_LABEL[user?.role ?? 'admin']}</Text>
       </View>
 
       <View style={styles.nav}>
         {state.routes.map((route, index) => {
           const { options } = descriptors[route.key];
+          if (options.hidden) return null; // onglet non autorisé pour ce rôle
           const focused = state.index === index;
           const label = typeof options.title === 'string' ? options.title : route.name;
           const badge = options.tabBarBadge;

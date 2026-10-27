@@ -8,5 +8,6 @@ export default function Index() {
   if (!ready) return null;
   // Sur le web (app.selix.io), pas d'onboarding client : on va droit à la connexion admin.
   if (!user) return <Redirect href={isWeb ? '/login' : '/welcome'} />;
-  return <Redirect href={user.role === 'admin' ? '/dashboard' : '/match'} />;
+  const home = { admin: '/dashboard', commercial: '/leads', promoteur: '/properties', user: '/match' } as const;
+  return <Redirect href={home[user.role]} />;
 }

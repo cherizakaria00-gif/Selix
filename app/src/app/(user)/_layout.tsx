@@ -11,7 +11,8 @@ import { isWeb } from '@/utils/platform';
 export default function UserLayout() {
   const { user, likedIds, logout } = useApp();
   if (!user) return <Redirect href="/welcome" />;
-  if (user.role === 'admin') return <Redirect href="/dashboard" />;
+  // Le personnel (admin, commercial, promoteur) retrouve son espace : « / » choisit la bonne page.
+  if (user.role !== 'user') return <Redirect href="/" />;
   if (isWeb) return <ClientsUseTheApp onLogout={logout} />;
 
   return (

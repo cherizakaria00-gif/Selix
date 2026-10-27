@@ -25,7 +25,7 @@ import {
   syncBackgroundGeofences,
   type BackgroundStatus,
 } from '@/services/proximity';
-import type { ChatMessage, Lead, Profile, Property, Swipe, SwipeAction, User } from '@/types';
+import type { Approval, ChatMessage, Lead, Profile, Property, PropertyStats, Role, Swipe, SwipeAction, User } from '@/types';
 
 type RegisterInput = Omit<User, 'id' | 'role' | 'createdAt'> & { needs?: string; profile?: Partial<Profile> };
 
@@ -36,6 +36,8 @@ type AppState = {
   properties: Property[];
   swipes: Swipe[];
   leads: Lead[];
+  /** Vus / likes / visites par bien (promoteur : ses biens ; super admin : tous). */
+  stats: PropertyStats[];
   profile: Profile;
   chat: ChatMessage[];
   thinking: boolean;
@@ -61,6 +63,14 @@ type AppState = {
   saveProperty: (p: Property) => Promise<void>;
   deleteProperty: (id: string) => Promise<void>;
   updateLead: (id: string, patch: Partial<Lead>) => Promise<void>;
+  /** Super admin : confie un lead à un commercial (null = le remettre « à assigner »). */
+  assignLead: (id: string, commercialId: string | null) => Promise<void>;
+  /** Super admin : valide ou refuse un bien déposé par un promoteur. */
+  setApproval: (id: string, approval: Exclude<Approval, 'en attente'>, reason?: string) => Promise<void>;
+  /** Super admin : comptes du personnel. Les erreurs (email déjà pris…) remontent à l'écran. */
+  createStaff: (input: api.StaffInput) => Promise<User>;
+  updateStaff: (id: string, patch: Parameters<typeof api.updateStaffUser>[1]) => Promise<void>;
+  changePassword: (current: string, next: string) => Promise<void>;
   /** Recharge biens, swipes et leads depuis le serveur. */
   refresh: () => Promise<void>;
 };
@@ -84,6 +94,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [properties, setProperties] = useState<Property[]>([]);
   const [swipes, setSwipes] = useState<Swipe[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
+  const [stats, setStats] = useState<PropertyStats[]>([]);
   const [profile, setProfile] = useState<Profile>(emptyProfile);
   // Copie synchrone du profil : plusieurs swipes rapides ne doivent pas s'écraser.
   const profileRef = useRef<Profile>(profile);
@@ -110,17 +121,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   /** Données partagées : changent quand l'admin publie ou qu'un client swipe. */
-  async function loadShared() {
-    const [props, sw, ld, us] = await Promise.all([api.getProperties(), api.getSwipes(), api.getLeads(), api.getUsers()]);
+  async function loadShared(role: Role | undefined) {
+    const wantsStats = role === 'admin' || role === 'promoteur';
+    const [props, sw, ld, us, st] = await Promise.all([
+      api.getProperties(),
+      api.getSwipes(),
+      api.getLeads(),
+      api.getUsers(),
+      wantsStats ? api.getPropertyStats() : Promise.resolve([] as PropertyStats[]),
+    ]);
     setProperties(props);
     setSwipes(sw);
     setLeads(ld);
     setUsers(us);
+    setStats(st);
   }
 
   async function loadUser(u: User) {
     setUser(u);
-    const [p, c] = await Promise.all([api.getProfile(u.id), api.getChat(u.id), loadShared()]);
+    const [p, c] = await Promise.all([api.getProfile(u.id), api.getChat(u.id), loadShared(u.role)]);
     profileRef.current = p ?? emptyProfile();
     setProfile(profileRef.current);
     setChat(c);
@@ -138,7 +157,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Retour au premier plan, ou push reçu app ouverte : on récupère les nouveaux biens.
   const refreshShared = useEffectEvent(() => {
-    if (user) loadShared().catch(() => undefined);
+    if (user) loadShared(user.role).catch(() => undefined);
   });
   useEffect(() => {
     const sub = RNAppState.addEventListener('change', (state) => {
@@ -254,6 +273,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     properties,
     swipes,
     leads,
+    stats,
     profile,
     chat,
     thinking,
@@ -288,6 +308,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setProfile(profileRef.current);
       setChat([]);
       setPosition(null);
+      setStats([]);
+      setUsers([]);
+      setLeads([]);
     },
 
     async swipe(propertyId, action) {
@@ -367,8 +390,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setLeads(await api.updateLead(id, patch).catch((e) => (alertError(e), leads)));
     },
 
+    async assignLead(id, commercialId) {
+      // « assignedTo » présent mais vide = désassigner (voir api.updateLead).
+      setLeads(await api.updateLead(id, { assignedTo: commercialId ?? undefined }).catch((e) => (alertError(e), leads)));
+    },
+
+    async setApproval(id, approval, reason) {
+      setProperties(await api.setPropertyApproval(id, approval, reason));
+    },
+
+    async createStaff(input) {
+      const created = await api.createStaffUser(input);
+      setUsers((prev) => [...prev, created]);
+      return created;
+    },
+
+    async updateStaff(id, patch) {
+      const updated = await api.updateStaffUser(id, patch);
+      setUsers((prev) => prev.map((u) => (u.id === id ? updated : u)));
+      // Désactiver un commercial ou changer son rôle remet ses leads « à assigner ».
+      if (patch.disabled !== undefined || patch.role !== undefined) setLeads(await api.getLeads());
+    },
+
+    async changePassword(current, next) {
+      await api.changePassword(current, next);
+    },
+
     async refresh() {
-      await loadShared();
+      await loadShared(user?.role);
     },
   };
 
