@@ -1,7 +1,7 @@
-import { useState } from 'react';
-import { ScrollView, StyleSheet, Text } from 'react-native';
+import { useRef, useState } from 'react';
+import { ScrollView, StyleSheet, Text, type TextInputInstance } from 'react-native';
 
-import { Card, Field, GradientButton, Header, Screen, SectionTitle } from '@/components/ui';
+import { Card, Field, GradientButton, Header, KeyboardAware, Screen, SectionTitle } from '@/components/ui';
 import { Colors } from '@/constants/theme';
 import { useApp } from '@/store/app-store';
 import type { Role } from '@/types';
@@ -22,6 +22,8 @@ export default function Settings() {
   const [confirm, setConfirm] = useState('');
   const [pwdMessage, setPwdMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [saving, setSaving] = useState(false);
+  const nextRef = useRef<TextInputInstance>(null);
+  const confirmRef = useRef<TextInputInstance>(null);
 
   async function reload() {
     setLoading(true);
@@ -54,32 +56,64 @@ export default function Settings() {
   return (
     <Screen>
       <Header title="Compte" />
-      <ScrollView contentContainerStyle={{ padding: 16, gap: 16, paddingBottom: 40 }}>
-        <Card>
-          <SectionTitle>{user?.name}</SectionTitle>
-          <Text style={styles.meta}>{user?.email}</Text>
-          {user?.phone ? <Text style={styles.meta}>{user.phone}</Text> : null}
-          <Text style={[styles.meta, { marginTop: 6 }]}>Rôle : {user ? ROLE_LABEL[user.role] : ''}</Text>
-        </Card>
+      <KeyboardAware>
+        <ScrollView contentContainerStyle={{ padding: 16, gap: 16, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
+          <Card>
+            <SectionTitle>{user?.name}</SectionTitle>
+            <Text style={styles.meta}>{user?.email}</Text>
+            {user?.phone ? <Text style={styles.meta}>{user.phone}</Text> : null}
+            <Text style={[styles.meta, { marginTop: 6 }]}>Rôle : {user ? ROLE_LABEL[user.role] : ''}</Text>
+          </Card>
 
-        <Card>
-          <SectionTitle>Changer mon mot de passe</SectionTitle>
-          <Field label="Mot de passe actuel" icon="lock-closed-outline" secureTextEntry value={current} onChangeText={setCurrent} autoComplete="current-password" />
-          <Field label="Nouveau mot de passe (8 caractères minimum)" icon="key-outline" secureTextEntry value={next} onChangeText={setNext} autoComplete="new-password" />
-          <Field label="Confirmer le nouveau mot de passe" icon="key-outline" secureTextEntry value={confirm} onChangeText={setConfirm} autoComplete="new-password" />
-          {pwdMessage && <Text style={[styles.message, { color: pwdMessage.ok ? Colors.like : Colors.dislike }]}>{pwdMessage.text}</Text>}
-          <GradientButton label="Modifier le mot de passe" icon="checkmark" loading={saving} disabled={!current || !next || !confirm} onPress={savePassword} />
-        </Card>
+          <Card>
+            <SectionTitle>Changer mon mot de passe</SectionTitle>
+            <Field
+              label="Mot de passe actuel"
+              icon="lock-closed-outline"
+              secureTextEntry
+              value={current}
+              onChangeText={setCurrent}
+              autoComplete="current-password"
+              returnKeyType="next"
+              submitBehavior="submit"
+              onSubmitEditing={() => nextRef.current?.focus()}
+            />
+            <Field
+              ref={nextRef}
+              label="Nouveau mot de passe (8 caractères minimum)"
+              icon="key-outline"
+              secureTextEntry
+              value={next}
+              onChangeText={setNext}
+              autoComplete="new-password"
+              returnKeyType="next"
+              submitBehavior="submit"
+              onSubmitEditing={() => confirmRef.current?.focus()}
+            />
+            <Field
+              ref={confirmRef}
+              label="Confirmer le nouveau mot de passe"
+              icon="key-outline"
+              secureTextEntry
+              value={confirm}
+              onChangeText={setConfirm}
+              autoComplete="new-password"
+              returnKeyType="done"
+            />
+            {pwdMessage && <Text style={[styles.message, { color: pwdMessage.ok ? Colors.like : Colors.dislike }]}>{pwdMessage.text}</Text>}
+            <GradientButton label="Modifier le mot de passe" icon="checkmark" loading={saving} disabled={!current || !next || !confirm} onPress={savePassword} />
+          </Card>
 
-        <Card>
-          <SectionTitle>Données</SectionTitle>
-          <Text style={styles.meta}>
-            Les données viennent du serveur Selix. Elles se mettent à jour à l’ouverture ; ce bouton force l’actualisation.
-          </Text>
-          <GradientButton label="Actualiser les données" variant="ghost" icon="refresh" onPress={reload} loading={loading} style={{ marginTop: 14 }} />
-        </Card>
-        <GradientButton label="Se déconnecter" variant="ghost" icon="log-out-outline" onPress={logout} />
-      </ScrollView>
+          <Card>
+            <SectionTitle>Données</SectionTitle>
+            <Text style={styles.meta}>
+              Les données viennent du serveur Selix. Elles se mettent à jour à l’ouverture ; ce bouton force l’actualisation.
+            </Text>
+            <GradientButton label="Actualiser les données" variant="ghost" icon="refresh" onPress={reload} loading={loading} style={{ marginTop: 14 }} />
+          </Card>
+          <GradientButton label="Se déconnecter" variant="ghost" icon="log-out-outline" onPress={logout} />
+        </ScrollView>
+      </KeyboardAware>
     </Screen>
   );
 }

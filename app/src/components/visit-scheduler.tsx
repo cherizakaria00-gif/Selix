@@ -99,7 +99,7 @@ function Sheet({ onClose, title, subtitle, busy, initial, confirmLabel, askNote,
     <>
       <View style={styles.backdrop}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Fermer" />
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.sheetWrap}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'web' ? undefined : 'padding'} style={styles.sheetWrap}>
           <View style={styles.sheet}>
             <View style={styles.grab} />
             <View style={styles.header}>

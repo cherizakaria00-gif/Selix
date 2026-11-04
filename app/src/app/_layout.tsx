@@ -1,21 +1,19 @@
-import * as Notifications from 'expo-notifications';
 import { DarkTheme, router, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
-import { Platform } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { Colors } from '@/constants/theme';
+import { Notifications } from '@/services/notifications';
 // Importé ici pour que la tâche de géofencing soit définie dès le lancement.
 import '@/services/proximity';
 import { AppProvider, useApp } from '@/store/app-store';
 
 SplashScreen.preventAutoHideAsync();
 
-// Les notifications n'existent pas sur web (le hook y lève une erreur).
-const useLastNotificationResponse =
-  Platform.OS === 'web' ? () => null : Notifications.useLastNotificationResponse;
+// Pas de notifications sur web ni dans Expo Go Android (le hook y lève une erreur).
+const useLastNotificationResponse = Notifications ? Notifications.useLastNotificationResponse : () => null;
 
 const theme = {
   ...DarkTheme,
@@ -32,7 +30,7 @@ function NotificationRouter() {
 
   useEffect(() => {
     const id = response?.notification.request.content.data?.propertyId;
-    if (!ready || !user || typeof id !== 'string') return;
+    if (!Notifications || !ready || !user || typeof id !== 'string') return;
     if (response?.actionIdentifier !== Notifications.DEFAULT_ACTION_IDENTIFIER) return;
     router.push({ pathname: '/property/[id]', params: { id } });
     Notifications.clearLastNotificationResponse();

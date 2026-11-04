@@ -1,15 +1,17 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import type { ComponentProps, ReactNode } from 'react';
+import type { ComponentProps, ReactNode, Ref } from 'react';
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
   type StyleProp,
+  type TextInputInstance,
   type TextInputProps,
   type TextStyle,
   type ViewStyle,
@@ -17,7 +19,7 @@ import {
 import { SafeAreaView, type Edge } from 'react-native-safe-area-context';
 
 import { Colors, Gradients, Radius, Spacing } from '@/constants/theme';
-import { useIsDesktop } from '@/utils/platform';
+import { isWeb, useIsDesktop } from '@/utils/platform';
 
 export type IconName = ComponentProps<typeof Ionicons>['name'];
 
@@ -42,6 +44,20 @@ export function Screen({
         {children}
       </SafeAreaView>
     </View>
+  );
+}
+
+/**
+ * Zone qui garde ses champs au-dessus du clavier : à placer autour de tout contenu avec un TextInput.
+ * Android est en edge-to-edge depuis le SDK 54 : la fenêtre ne se redimensionne plus à l'ouverture
+ * du clavier (adjustResize sans effet), il faut donc le même « padding » que sur iOS. Les ScrollView
+ * à l'intérieur ramènent ensuite d'elles-mêmes le champ actif dans la zone visible.
+ */
+export function KeyboardAware({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
+  return (
+    <KeyboardAvoidingView behavior={isWeb ? undefined : 'padding'} style={[styles.flex, style]}>
+      {children}
+    </KeyboardAvoidingView>
   );
 }
 
@@ -134,7 +150,7 @@ export function Field({
   right,
   style,
   ...props
-}: TextInputProps & { label?: string; icon?: IconName; right?: ReactNode }) {
+}: TextInputProps & { label?: string; icon?: IconName; right?: ReactNode; ref?: Ref<TextInputInstance> }) {
   return (
     <View style={{ marginBottom: Spacing.md }}>
       {label && <Text style={styles.label}>{label}</Text>}

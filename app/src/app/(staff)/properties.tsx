@@ -5,7 +5,7 @@ import { FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } fr
 
 import { ApprovalBadge, approvalOf } from '@/components/approval';
 import { PropertyRow } from '@/components/property-card';
-import { Chip, Empty, Field, GradientButton, Header, Screen } from '@/components/ui';
+import { Chip, Empty, Field, GradientButton, Header, KeyboardAware, Screen } from '@/components/ui';
 import { Colors, Radius } from '@/constants/theme';
 import { useApp } from '@/store/app-store';
 import type { Approval, Property, PropertyStatus, Transaction } from '@/types';
@@ -76,58 +76,61 @@ export default function Properties() {
           <Chip label="Location" active={tx === 'location'} onPress={() => setTx(tx === 'location' ? 'all' : 'location')} />
         </ScrollView>
       </View>
-      <FlatList
-        data={list}
-        keyExtractor={(p) => p.id}
-        contentContainerStyle={{ padding: 16, gap: 14, paddingBottom: 40 }}
-        renderItem={({ item }) => {
-          const st = stats.find((s) => s.propertyId === item.id);
-          const state = approvalOf(item);
-          const owner = users.find((u) => u.id === item.ownerId);
-          return (
-            <View>
-              <PropertyRow
-                property={item}
-                onPress={() => router.push({ pathname: '/edit-property', params: { id: item.id } })}
-                right={
-                  <View style={{ alignItems: 'flex-end', gap: 6 }}>
-                    <ApprovalBadge approval={state} />
-                    <Text style={[styles.status, { color: STATUS_COLOR[item.status] }]}>● {item.status}</Text>
-                  </View>
-                }
-              />
-              <View style={styles.meta}>
-                {isAdmin && item.ownerId && <Text style={styles.metaText}>Promoteur : {owner?.name ?? 'compte supprimé'}</Text>}
-                <Text style={styles.metaText}>
-                  {st ? `${st.views} vu${st.views > 1 ? 's' : ''} · ${st.likes} like${st.likes > 1 ? 's' : ''} · ${st.visits} visite${st.visits > 1 ? 's' : ''}` : 'Pas encore de statistiques'}
-                </Text>
-              </View>
-              {state === 'refusé' && (
-                <View style={styles.refused}>
-                  <Text style={styles.refusedTitle}>Bien refusé</Text>
-                  <Text style={styles.refusedText}>
-                    {item.rejectionReason || 'Aucun motif indiqué.'}
-                    {!isAdmin ? ' Corrigez le bien et enregistrez-le pour le soumettre à nouveau.' : ''}
+      <KeyboardAware>
+        <FlatList
+          data={list}
+          keyExtractor={(p) => p.id}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{ padding: 16, gap: 14, paddingBottom: 40 }}
+          renderItem={({ item }) => {
+            const st = stats.find((s) => s.propertyId === item.id);
+            const state = approvalOf(item);
+            const owner = users.find((u) => u.id === item.ownerId);
+            return (
+              <View>
+                <PropertyRow
+                  property={item}
+                  onPress={() => router.push({ pathname: '/edit-property', params: { id: item.id } })}
+                  right={
+                    <View style={{ alignItems: 'flex-end', gap: 6 }}>
+                      <ApprovalBadge approval={state} />
+                      <Text style={[styles.status, { color: STATUS_COLOR[item.status] }]}>● {item.status}</Text>
+                    </View>
+                  }
+                />
+                <View style={styles.meta}>
+                  {isAdmin && item.ownerId && <Text style={styles.metaText}>Promoteur : {owner?.name ?? 'compte supprimé'}</Text>}
+                  <Text style={styles.metaText}>
+                    {st ? `${st.views} vu${st.views > 1 ? 's' : ''} · ${st.likes} like${st.likes > 1 ? 's' : ''} · ${st.visits} visite${st.visits > 1 ? 's' : ''}` : 'Pas encore de statistiques'}
                   </Text>
                 </View>
-              )}
-              {isAdmin && state === 'en attente' && <ReviewActions property={item} />}
-            </View>
-          );
-        }}
-        ListEmptyComponent={
-          <Empty
-            icon="business-outline"
-            title={isAdmin ? 'Aucun bien' : 'Aucun bien pour le moment'}
-            text={isAdmin ? 'Aucun bien ne correspond à ces filtres.' : 'Ajoutez votre premier bien avec le bouton +. Il sera publié après validation.'}
-            action={
-              !isAdmin && !managed.length ? (
-                <GradientButton label="Ajouter un bien" icon="add-circle" onPress={() => router.push({ pathname: '/edit-property', params: { id: 'new' } })} />
-              ) : undefined
-            }
-          />
-        }
-      />
+                {state === 'refusé' && (
+                  <View style={styles.refused}>
+                    <Text style={styles.refusedTitle}>Bien refusé</Text>
+                    <Text style={styles.refusedText}>
+                      {item.rejectionReason || 'Aucun motif indiqué.'}
+                      {!isAdmin ? ' Corrigez le bien et enregistrez-le pour le soumettre à nouveau.' : ''}
+                    </Text>
+                  </View>
+                )}
+                {isAdmin && state === 'en attente' && <ReviewActions property={item} />}
+              </View>
+            );
+          }}
+          ListEmptyComponent={
+            <Empty
+              icon="business-outline"
+              title={isAdmin ? 'Aucun bien' : 'Aucun bien pour le moment'}
+              text={isAdmin ? 'Aucun bien ne correspond à ces filtres.' : 'Ajoutez votre premier bien avec le bouton +. Il sera publié après validation.'}
+              action={
+                !isAdmin && !managed.length ? (
+                  <GradientButton label="Ajouter un bien" icon="add-circle" onPress={() => router.push({ pathname: '/edit-property', params: { id: 'new' } })} />
+                ) : undefined
+              }
+            />
+          }
+        />
+      </KeyboardAware>
     </Screen>
   );
 }

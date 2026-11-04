@@ -1,9 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useRef, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View, type TextInputInstance } from 'react-native';
 
-import { Chip, Field, GradientButton, Header, Screen } from '@/components/ui';
+import { Chip, Field, GradientButton, Header, KeyboardAware, Screen } from '@/components/ui';
 import { Colors, Radius } from '@/constants/theme';
 import { useApp } from '@/store/app-store';
 import type { PropertyType, Transaction } from '@/types';
@@ -54,6 +54,9 @@ export default function Register() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const phoneRef = useRef<TextInputInstance>(null);
+  const emailRef = useRef<TextInputInstance>(null);
+  const passwordRef = useRef<TextInputInstance>(null);
 
   const canNext = [!!transaction, cities.length > 0, true, true, !!name && !!email && password.length >= 6][step];
 
@@ -91,7 +94,7 @@ export default function Register() {
           <View key={s} style={[styles.bar, i <= step && styles.barActive]} />
         ))}
       </View>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+      <KeyboardAware>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <Text style={styles.step}>
             Étape {step + 1}/{STEPS.length}
@@ -202,8 +205,20 @@ export default function Register() {
 
           {step === 4 && (
             <View style={{ marginTop: 12 }}>
-              <Field label="Nom complet" icon="person-outline" value={name} onChangeText={setName} autoComplete="name" />
               <Field
+                label="Nom complet"
+                icon="person-outline"
+                value={name}
+                onChangeText={setName}
+                autoComplete="name"
+                textContentType="name"
+                autoCapitalize="words"
+                returnKeyType="next"
+                submitBehavior="submit"
+                onSubmitEditing={() => phoneRef.current?.focus()}
+              />
+              <Field
+                ref={phoneRef}
                 label="Téléphone (WhatsApp)"
                 icon="call-outline"
                 placeholder="+212 6…"
@@ -211,8 +226,13 @@ export default function Register() {
                 value={phone}
                 onChangeText={setPhone}
                 autoComplete="tel"
+                textContentType="telephoneNumber"
+                returnKeyType="next"
+                submitBehavior="submit"
+                onSubmitEditing={() => emailRef.current?.focus()}
               />
               <Field
+                ref={emailRef}
                 label="Email"
                 icon="mail-outline"
                 placeholder="votre@email.com"
@@ -221,15 +241,22 @@ export default function Register() {
                 value={email}
                 onChangeText={setEmail}
                 autoComplete="email"
+                textContentType="emailAddress"
                 autoCorrect={false}
+                returnKeyType="next"
+                submitBehavior="submit"
+                onSubmitEditing={() => passwordRef.current?.focus()}
               />
               <Field
+                ref={passwordRef}
                 label="Mot de passe (6 caractères min.)"
                 icon="lock-closed-outline"
                 secureTextEntry
                 value={password}
                 onChangeText={setPassword}
                 autoComplete="new-password"
+                textContentType="newPassword"
+                returnKeyType="done"
               />
               {error ? <Text style={{ color: Colors.dislike }}>{error}</Text> : null}
             </View>
@@ -242,7 +269,7 @@ export default function Register() {
             <GradientButton label="Créer mon compte" icon="sparkles" disabled={!canNext} loading={loading} onPress={finish} />
           )}
         </View>
-      </KeyboardAvoidingView>
+      </KeyboardAware>
     </Screen>
   );
 }

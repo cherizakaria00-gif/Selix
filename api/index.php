@@ -503,6 +503,19 @@ function route(string $method, string $path): mixed
             q('DELETE FROM selix_tokens WHERE user_id = ? AND token_hash <> ?', [$u['id'], hash('sha256', (string) bearer_token())]);
             return ['ok' => true];
 
+        // Le client supprime son compte et ses données (exigé par Apple et Google).
+        // Les comptes du personnel restent gérés par le super admin.
+        case ['DELETE', 'me', 1]:
+            $u = require_user();
+            if ($u['role'] !== 'user') throw new HttpError(403, 'Ce compte est géré par le super admin.');
+            foreach (['selix_leads', 'selix_swipes', 'selix_docs', 'selix_push_tokens'] as $table) {
+                q("DELETE FROM $table WHERE user_id = ?", [$u['id']]);
+            }
+            q('DELETE FROM selix_rate WHERE k = ? OR k LIKE ?', ['pwd:' . $u['id'], 'login:%:' . $u['email']]);
+            q('DELETE FROM selix_users WHERE id = ?', [$u['id']]);
+            q('DELETE FROM selix_tokens WHERE user_id = ?', [$u['id']]);
+            return ['ok' => true];
+
         // --- Profil IA, chat, biens déjà vus : documents JSON propres à l'utilisateur ---
         case ['GET', 'me', 2]:
         case ['PUT', 'me', 2]:

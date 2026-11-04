@@ -1,5 +1,4 @@
 import * as Location from 'expo-location';
-import * as Notifications from 'expo-notifications';
 import { createContext, useContext, useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AppState as RNAppState, Platform } from 'react-native';
 
@@ -17,7 +16,7 @@ import {
 import * as api from '@/services/api';
 import { notify } from '@/utils/platform';
 import type { Coords } from '@/services/geo';
-import { getPushToken, notifyNewMatch, setupNotifications } from '@/services/notifications';
+import { getPushToken, Notifications, notifyNewMatch, setupNotifications } from '@/services/notifications';
 import {
   checkNearby,
   getForegroundPermission,
@@ -54,6 +53,8 @@ type AppState = {
   login: (email: string, password: string) => Promise<User>;
   register: (input: RegisterInput) => Promise<User>;
   logout: () => Promise<void>;
+  /** Client : supprime définitivement son compte et ses données. */
+  deleteAccount: () => Promise<void>;
   swipe: (propertyId: string, action: SwipeAction) => Promise<void>;
   resetSwipes: () => Promise<void>;
   sendMessage: (text: string) => Promise<void>;
@@ -168,12 +169,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const sub = RNAppState.addEventListener('change', (state) => {
       if (state === 'active') refreshShared();
     });
-    const pushSub =
-      Platform.OS === 'web'
-        ? null
-        : Notifications.addNotificationReceivedListener((n) => {
-            if (['match', 'visit'].includes(String(n.request.content.data?.kind))) refreshShared();
-          });
+    const pushSub = Notifications?.addNotificationReceivedListener((n) => {
+      if (['match', 'visit'].includes(String(n.request.content.data?.kind))) refreshShared();
+    });
     return () => {
       sub.remove();
       pushSub?.remove();
@@ -271,6 +269,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (user) await api.saveProfile(user.id, next).catch(() => undefined);
   }
 
+  function resetSession() {
+    pushTokenRef.current = null;
+    setUser(null);
+    profileRef.current = emptyProfile();
+    setProfile(profileRef.current);
+    setChat([]);
+    setPosition(null);
+    setStats([]);
+    setUsers([]);
+    setLeads([]);
+  }
+
   const value: AppState = {
     ready,
     user,
@@ -307,15 +317,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     async logout() {
       await api.logout(pushTokenRef.current);
-      pushTokenRef.current = null;
-      setUser(null);
-      profileRef.current = emptyProfile();
-      setProfile(profileRef.current);
-      setChat([]);
-      setPosition(null);
-      setStats([]);
-      setUsers([]);
-      setLeads([]);
+      resetSession();
+    },
+
+    async deleteAccount() {
+      await api.deleteAccount();
+      // Plus de compte : plus d'alertes de proximité sur cet appareil.
+      await syncBackgroundGeofences([], 0, false).catch(() => undefined);
+      resetSession();
     },
 
     async swipe(propertyId, action) {

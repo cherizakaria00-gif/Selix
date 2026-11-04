@@ -1,13 +1,31 @@
-import Constants from 'expo-constants';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
 import * as Device from 'expo-device';
-import * as Notifications from 'expo-notifications';
-import { AndroidImportance } from 'expo-notifications';
+import type * as ExpoNotifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
 import type { Property } from '@/types';
 import { formatDistance, formatPrice } from '@/utils/format';
 
-Notifications.setNotificationHandler({
+/**
+ * expo-notifications, ou null là où il ne se charge pas : sur web, et dans Expo Go
+ * sur Android, qui n'embarque plus le module natif des push depuis le SDK 53
+ * (« Cannot find native module 'ExpoTopicSubscriptionModule' » dès l'import).
+ * Les builds EAS (stores) l'ont toujours.
+ */
+export const Notifications: typeof ExpoNotifications | null = loadNotifications();
+
+function loadNotifications() {
+  if (Platform.OS === 'web') return null;
+  if (Platform.OS === 'android' && Constants.executionEnvironment === ExecutionEnvironment.StoreClient) return null;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return require('expo-notifications') as typeof ExpoNotifications;
+  } catch {
+    return null;
+  }
+}
+
+Notifications?.setNotificationHandler({
   handleNotification: async () => ({
     shouldPlaySound: true,
     shouldSetBadge: false,
@@ -17,16 +35,16 @@ Notifications.setNotificationHandler({
 });
 
 export async function setupNotifications() {
-  if (Platform.OS === 'web') return false;
+  if (!Notifications) return false;
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync('nearby', {
       name: 'Biens à proximité',
-      importance: AndroidImportance.MAX,
+      importance: Notifications.AndroidImportance.MAX,
       lightColor: '#C010A0',
     });
     await Notifications.setNotificationChannelAsync('matches', {
       name: 'Nouveaux biens pour vous',
-      importance: AndroidImportance.HIGH,
+      importance: Notifications.AndroidImportance.HIGH,
       lightColor: '#7B2FF7',
     });
   }
@@ -37,7 +55,7 @@ export async function setupNotifications() {
 }
 
 export async function notifyNearby(property: Property, km: number) {
-  if (Platform.OS === 'web') return;
+  if (!Notifications) return;
   await Notifications.scheduleNotificationAsync({
     content: {
       title: `${property.title} est à ${formatDistance(km)} de vous`,
@@ -50,7 +68,7 @@ export async function notifyNearby(property: Property, km: number) {
 }
 
 export async function notifyNewMatch(property: Property, score: number) {
-  if (Platform.OS === 'web') return;
+  if (!Notifications) return;
   await Notifications.scheduleNotificationAsync({
     content: {
       title: `Nouveau bien pour vous — ${score}% compatible`,
@@ -68,7 +86,7 @@ export async function notifyNewMatch(property: Property, score: number) {
  * Expo Go sur Android ne reçoit pas de push distants depuis le SDK 53.
  */
 export async function getPushToken(): Promise<string | null> {
-  if (Platform.OS === 'web' || !Device.isDevice) return null;
+  if (!Notifications || !Device.isDevice) return null;
   const projectId = Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
   if (!projectId) return null;
   try {

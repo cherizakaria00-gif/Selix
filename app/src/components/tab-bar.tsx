@@ -6,6 +6,8 @@ import { Colors } from '@/constants/theme';
 
 export const tabScreenOptions = {
   headerShown: false,
+  // Clavier ouvert : la barre disparaît au lieu de rester entre le champ et le clavier.
+  tabBarHideOnKeyboard: true,
   tabBarActiveTintColor: Colors.pink,
   tabBarInactiveTintColor: Colors.textFaint,
   tabBarStyle: {

@@ -1,9 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useRef, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View, type TextInputInstance } from 'react-native';
 
-import { Badge, Field, GradientButton, Header, Screen } from '@/components/ui';
+import { Badge, Field, GradientButton, Header, KeyboardAware, Screen } from '@/components/ui';
 import { Colors, Radius } from '@/constants/theme';
 import { useApp } from '@/store/app-store';
 import { isWeb } from '@/utils/platform';
@@ -15,6 +15,7 @@ export default function Login() {
   const [show, setShow] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const passwordRef = useRef<TextInputInstance>(null);
 
   async function submit() {
     setError('');
@@ -40,7 +41,7 @@ export default function Login() {
           )
         }
       />
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+      <KeyboardAware>
         <ScrollView contentContainerStyle={[styles.content, isWeb && styles.contentWeb]} keyboardShouldPersistTaps="handled">
           {isWeb ? (
             <>
@@ -77,20 +78,27 @@ export default function Login() {
               autoCapitalize="none"
               keyboardType="email-address"
               autoComplete="email"
+              textContentType="emailAddress"
               autoCorrect={false}
               clearButtonMode="while-editing"
               value={email}
               onChangeText={setEmail}
+              returnKeyType="next"
+              submitBehavior="submit"
+              onSubmitEditing={() => passwordRef.current?.focus()}
             />
             <Field
+              ref={passwordRef}
               label="Mot de passe"
               icon="lock-closed-outline"
               placeholder="••••••••••"
               secureTextEntry={!show}
               autoComplete="password"
+              textContentType="password"
+              returnKeyType="go"
               value={password}
               onChangeText={setPassword}
-              onSubmitEditing={submit}
+              onSubmitEditing={() => email && password && submit()}
               right={
                 <Pressable onPress={() => setShow((s) => !s)} hitSlop={10}>
                   <Ionicons name={show ? 'eye-outline' : 'eye-off-outline'} size={20} color={Colors.textFaint} />
@@ -120,7 +128,7 @@ export default function Login() {
             En continuant, vous acceptez nos conditions d’utilisation et notre politique de confidentialité.
           </Text>
         </ScrollView>
-      </KeyboardAvoidingView>
+      </KeyboardAware>
     </Screen>
   );
 }

@@ -4,7 +4,6 @@ import {
   ActivityIndicator,
   FlatList,
   Keyboard,
-  KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
@@ -15,7 +14,7 @@ import {
 } from 'react-native';
 
 import { PropertyRow } from '@/components/property-card';
-import { Header, Logo, Screen } from '@/components/ui';
+import { Header, KeyboardAware, Logo, Screen } from '@/components/ui';
 import { Colors, Radius } from '@/constants/theme';
 import { describeProfile } from '@/services/ai';
 import { useApp } from '@/store/app-store';
@@ -75,7 +74,7 @@ export default function Assistant() {
         </View>
       ) : null}
 
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+      <KeyboardAware>
         <Pressable style={{ flex: 1 }} onPress={Keyboard.dismiss} accessible={false}>
           <FlatList
             ref={list}
@@ -86,6 +85,8 @@ export default function Assistant() {
             keyExtractor={(m) => m.id}
             contentContainerStyle={{ padding: 16, gap: 12 }}
             onContentSizeChange={() => list.current?.scrollToEnd({ animated: true })}
+            // Le clavier qui s'ouvre ou se ferme change la hauteur de la liste : le dernier message reste en vue.
+            onLayout={() => list.current?.scrollToEnd({ animated: false })}
             renderItem={({ item }) => (
               <View style={{ gap: 8 }}>
                 <View style={[styles.bubble, item.role === 'user' ? styles.mine : styles.theirs]}>
@@ -137,7 +138,7 @@ export default function Assistant() {
             <Ionicons name="arrow-up" size={22} color="#fff" />
           </Pressable>
         </View>
-      </KeyboardAvoidingView>
+      </KeyboardAware>
     </Screen>
   );
 }

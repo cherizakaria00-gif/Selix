@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { useState } from 'react';
 import { Linking, Platform, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 
 import { Card, Chip, GradientButton, Header, Screen, SectionTitle } from '@/components/ui';
@@ -7,12 +8,14 @@ import { Colors } from '@/constants/theme';
 import { describeProfile } from '@/services/ai';
 import { isExpoGo } from '@/services/proximity';
 import { useApp } from '@/store/app-store';
+import { confirmAction, notify } from '@/utils/platform';
 
 const RADII = [0.5, 1, 2, 5, 10];
 
 export default function Profile() {
-  const { user, profile, updateProfile, logout, locationGranted, enableLocation, backgroundStatus, likedIds, dislikedIds } =
+  const { user, profile, updateProfile, logout, deleteAccount, locationGranted, enableLocation, backgroundStatus, likedIds, dislikedIds } =
     useApp();
+  const [deleting, setDeleting] = useState(false);
   const l = profile.learned;
   const topOf = (rec: Record<string, number>) =>
     Object.entries(rec)
@@ -32,6 +35,22 @@ export default function Profile() {
         : backgroundStatus === 'denied'
           ? 'Autorisez la localisation « Toujours » pour être alerté app fermée.'
           : 'Inactive';
+
+  async function removeAccount() {
+    const confirmed = await confirmAction(
+      'Supprimer votre compte ?',
+      'Votre compte, votre profil, vos conversations, vos likes et vos demandes de visite seront définitivement effacés. Cette action est irréversible.',
+      'Supprimer',
+    );
+    if (!confirmed) return;
+    setDeleting(true);
+    try {
+      await deleteAccount();
+    } catch (e) {
+      setDeleting(false);
+      notify('Suppression impossible', e instanceof Error ? e.message : String(e));
+    }
+  }
 
   return (
     <Screen>
@@ -122,6 +141,7 @@ export default function Profile() {
           <Text style={[styles.meta, { textAlign: 'center' }]}>Mode aperçu Expo Go</Text>
         )}
         <GradientButton label="Se déconnecter" variant="ghost" icon="log-out-outline" onPress={logout} />
+        <GradientButton label="Supprimer mon compte" variant="danger" icon="trash-outline" loading={deleting} onPress={removeAccount} />
       </ScrollView>
     </Screen>
   );

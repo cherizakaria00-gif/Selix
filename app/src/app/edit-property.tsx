@@ -3,12 +3,12 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { Redirect, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { ApprovalBadge, approvalOf } from '@/components/approval';
 import { MapView, Marker, type MapPressEvent } from '@/components/maps';
 import { PropertyImage } from '@/components/property-card';
-import { Chip, Field, GradientButton, Header, Screen } from '@/components/ui';
+import { Chip, Field, GradientButton, Header, KeyboardAware, Screen } from '@/components/ui';
 import { Colors, Radius } from '@/constants/theme';
 import { uid } from '@/services/api';
 import { MOROCCO_REGION } from '@/services/geo';
@@ -135,7 +135,7 @@ export default function EditProperty() {
         }
         title={existing ? 'Modifier le bien' : 'Nouveau bien'}
       />
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+      <KeyboardAware>
         <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
           {existing?.approval && (
             <View style={styles.banner}>
@@ -302,7 +302,7 @@ export default function EditProperty() {
           />
           {existing && <GradientButton label="Supprimer" variant="danger" onPress={remove} style={{ marginTop: 12 }} />}
         </ScrollView>
-      </KeyboardAvoidingView>
+      </KeyboardAware>
     </Screen>
   );
 }

@@ -16,13 +16,14 @@
         "UIBackgroundModes": [
           "location",
           "fetch"
-        ]
+        ],
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
       "package": "ma.selix.app",
       "adaptiveIcon": {
-        "backgroundColor": "#8A1FC8",
+        "backgroundColor": "#000000",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
@@ -79,6 +80,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "77f41840-4a70-4e50-9d14-a5cb057e24a5"
+      }
+    },
+    "owner": "flujipay"
   }
 }

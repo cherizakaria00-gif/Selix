@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { FlatList, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { PropertyImage } from '@/components/property-card';
-import { Card, Chip, Empty, Header, Screen } from '@/components/ui';
+import { Card, Chip, Empty, Header, KeyboardAware, Screen } from '@/components/ui';
 import { Colors, Radius } from '@/constants/theme';
 import { VisitBlock } from '@/components/visit-actions';
 import { openWhatsApp } from '@/services/geo';
@@ -51,25 +51,28 @@ export default function Leads() {
           ))}
         </ScrollView>
       </View>
-      <FlatList
-        data={list}
-        keyExtractor={(l) => l.id}
-        contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 40, flexGrow: 1 }}
-        renderItem={({ item }) => <LeadCard lead={item} isAdmin={isAdmin} commercials={commercials} />}
-        ListEmptyComponent={
-          <View style={{ flex: 1, justifyContent: 'center' }}>
-            <Empty
-              icon="people-outline"
-              title={isAdmin ? 'Aucun lead' : 'Aucun lead pour le moment'}
-              text={
-                isAdmin
-                  ? 'Chaque like ou demande de visite d’un client apparaît ici. Assignez-le à un commercial.'
-                  : 'Les leads que le super admin vous assigne apparaissent ici.'
-              }
-            />
-          </View>
-        }
-      />
+      <KeyboardAware>
+        <FlatList
+          data={list}
+          keyExtractor={(l) => l.id}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 40, flexGrow: 1 }}
+          renderItem={({ item }) => <LeadCard lead={item} isAdmin={isAdmin} commercials={commercials} />}
+          ListEmptyComponent={
+            <View style={{ flex: 1, justifyContent: 'center' }}>
+              <Empty
+                icon="people-outline"
+                title={isAdmin ? 'Aucun lead' : 'Aucun lead pour le moment'}
+                text={
+                  isAdmin
+                    ? 'Chaque like ou demande de visite d’un client apparaît ici. Assignez-le à un commercial.'
+                    : 'Les leads que le super admin vous assigne apparaissent ici.'
+                }
+              />
+            </View>
+          }
+        />
+      </KeyboardAware>
     </Screen>
   );
 }

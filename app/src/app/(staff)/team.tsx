@@ -3,7 +3,7 @@ import { Redirect } from 'expo-router';
 import { useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { Badge, Card, Chip, Empty, Field, GradientButton, Header, Screen, SectionTitle } from '@/components/ui';
+import { Badge, Card, Chip, Empty, Field, GradientButton, Header, KeyboardAware, Screen, SectionTitle } from '@/components/ui';
 import { Colors, Radius } from '@/constants/theme';
 import { useApp } from '@/store/app-store';
 import type { StaffRole, User } from '@/types';
@@ -59,88 +59,90 @@ export default function Team() {
   return (
     <Screen>
       <Header title="Équipe" />
-      <ScrollView contentContainerStyle={{ padding: 16, gap: 16, paddingBottom: 40 }}>
-        <Text style={styles.intro}>
-          Créez les comptes des commerciaux et des promoteurs. Vous leur transmettez leur email et un mot de passe provisoire : ils le changent
-          dans « Compte ».
-        </Text>
+      <KeyboardAware>
+        <ScrollView contentContainerStyle={{ padding: 16, gap: 16, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
+          <Text style={styles.intro}>
+            Créez les comptes des commerciaux et des promoteurs. Vous leur transmettez leur email et un mot de passe provisoire : ils le changent
+            dans « Compte ».
+          </Text>
 
-        {created && (
-          <Card style={styles.created}>
-            <SectionTitle>Compte créé</SectionTitle>
-            <Text style={styles.line}>
-              Transmettez ces identifiants à la personne ({created.role === 'commercial' ? 'commercial' : 'promoteur'}) pour se connecter sur
-              app.selix.io. Ils ne seront plus affichés ensuite.
-            </Text>
-            <View style={styles.creds}>
-              <Text style={styles.credLabel}>Email</Text>
-              <Text style={styles.credValue} selectable>
-                {created.email}
+          {created && (
+            <Card style={styles.created}>
+              <SectionTitle>Compte créé</SectionTitle>
+              <Text style={styles.line}>
+                Transmettez ces identifiants à la personne ({created.role === 'commercial' ? 'commercial' : 'promoteur'}) pour se connecter sur
+                app.selix.io. Ils ne seront plus affichés ensuite.
               </Text>
-              <Text style={[styles.credLabel, { marginTop: 8 }]}>Mot de passe provisoire</Text>
-              <Text style={styles.credValue} selectable>
-                {created.password}
-              </Text>
-            </View>
-            <GradientButton label="J’ai noté les identifiants" variant="ghost" onPress={() => setCreated(null)} />
-          </Card>
-        )}
+              <View style={styles.creds}>
+                <Text style={styles.credLabel}>Email</Text>
+                <Text style={styles.credValue} selectable>
+                  {created.email}
+                </Text>
+                <Text style={[styles.credLabel, { marginTop: 8 }]}>Mot de passe provisoire</Text>
+                <Text style={styles.credValue} selectable>
+                  {created.password}
+                </Text>
+              </View>
+              <GradientButton label="J’ai noté les identifiants" variant="ghost" onPress={() => setCreated(null)} />
+            </Card>
+          )}
 
-        {open ? (
-          <Card>
-            <SectionTitle>Nouveau compte</SectionTitle>
-            <Text style={styles.label}>Rôle</Text>
-            <View style={styles.roles}>
-              {ROLES.map((r) => (
-                <Chip key={r.key} label={r.label} icon={r.icon} active={role === r.key} onPress={() => setRole(r.key)} />
-              ))}
-            </View>
-            <Text style={styles.help}>{ROLES.find((r) => r.key === role)?.help}</Text>
-            <Field label="Nom complet" icon="person-outline" value={name} onChangeText={setName} />
-            <Field label="Email" icon="mail-outline" autoCapitalize="none" keyboardType="email-address" autoCorrect={false} value={email} onChangeText={setEmail} />
-            <Field label="Téléphone" icon="call-outline" keyboardType="phone-pad" placeholder="+212 6…" value={phone} onChangeText={setPhone} />
-            <Field
-              label="Mot de passe provisoire (8 caractères minimum)"
-              icon="key-outline"
-              autoCapitalize="none"
-              autoCorrect={false}
-              value={password}
-              onChangeText={setPassword}
-              right={<Text style={styles.generate} onPress={() => setPassword(generatePassword())}>Générer</Text>}
-            />
-            {error ? <Text style={styles.error}>{error}</Text> : null}
-            <View style={styles.actions}>
-              <GradientButton
-                label="Créer le compte"
-                icon="person-add"
-                loading={saving}
-                disabled={!name.trim() || !email.trim() || password.length < 8}
-                onPress={submit}
-                style={{ flex: 1 }}
+          {open ? (
+            <Card>
+              <SectionTitle>Nouveau compte</SectionTitle>
+              <Text style={styles.label}>Rôle</Text>
+              <View style={styles.roles}>
+                {ROLES.map((r) => (
+                  <Chip key={r.key} label={r.label} icon={r.icon} active={role === r.key} onPress={() => setRole(r.key)} />
+                ))}
+              </View>
+              <Text style={styles.help}>{ROLES.find((r) => r.key === role)?.help}</Text>
+              <Field label="Nom complet" icon="person-outline" autoCapitalize="words" value={name} onChangeText={setName} />
+              <Field label="Email" icon="mail-outline" autoCapitalize="none" keyboardType="email-address" autoComplete="off" autoCorrect={false} value={email} onChangeText={setEmail} />
+              <Field label="Téléphone" icon="call-outline" keyboardType="phone-pad" autoComplete="off" placeholder="+212 6…" value={phone} onChangeText={setPhone} />
+              <Field
+                label="Mot de passe provisoire (8 caractères minimum)"
+                icon="key-outline"
+                autoCapitalize="none"
+                autoCorrect={false}
+                value={password}
+                onChangeText={setPassword}
+                right={<Text style={styles.generate} onPress={() => setPassword(generatePassword())}>Générer</Text>}
               />
-              <GradientButton label="Annuler" variant="ghost" onPress={() => (setOpen(false), setError(''))} style={{ flex: 1 }} />
-            </View>
-          </Card>
-        ) : (
-          <GradientButton label="Ajouter un compte" icon="person-add" onPress={() => (setOpen(true), setCreated(null))} />
-        )}
+              {error ? <Text style={styles.error}>{error}</Text> : null}
+              <View style={styles.actions}>
+                <GradientButton
+                  label="Créer le compte"
+                  icon="person-add"
+                  loading={saving}
+                  disabled={!name.trim() || !email.trim() || password.length < 8}
+                  onPress={submit}
+                  style={{ flex: 1 }}
+                />
+                <GradientButton label="Annuler" variant="ghost" onPress={() => (setOpen(false), setError(''))} style={{ flex: 1 }} />
+              </View>
+            </Card>
+          ) : (
+            <GradientButton label="Ajouter un compte" icon="person-add" onPress={() => (setOpen(true), setCreated(null))} />
+          )}
 
-        <SectionTitle style={{ marginTop: 8 }}>Comptes ({staff.length})</SectionTitle>
-        {staff.length === 0 && (
-          <Empty icon="people-circle-outline" title="Aucun compte pour l’instant" text="Ajoutez un commercial pour pouvoir lui assigner des leads, ou un promoteur pour qu’il dépose ses biens." />
-        )}
-        {staff.map((u) => (
-          <StaffCard
-            key={u.id}
-            account={u}
-            detail={
-              u.role === 'commercial'
-                ? `${leads.filter((l) => l.assignedTo === u.id).length} lead(s) assigné(s)`
-                : `${properties.filter((p) => p.ownerId === u.id).length} bien(s) déposé(s)`
-            }
-          />
-        ))}
-      </ScrollView>
+          <SectionTitle style={{ marginTop: 8 }}>Comptes ({staff.length})</SectionTitle>
+          {staff.length === 0 && (
+            <Empty icon="people-circle-outline" title="Aucun compte pour l’instant" text="Ajoutez un commercial pour pouvoir lui assigner des leads, ou un promoteur pour qu’il dépose ses biens." />
+          )}
+          {staff.map((u) => (
+            <StaffCard
+              key={u.id}
+              account={u}
+              detail={
+                u.role === 'commercial'
+                  ? `${leads.filter((l) => l.assignedTo === u.id).length} lead(s) assigné(s)`
+                  : `${properties.filter((p) => p.ownerId === u.id).length} bien(s) déposé(s)`
+              }
+            />
+          ))}
+        </ScrollView>
+      </KeyboardAware>
     </Screen>
   );
 }

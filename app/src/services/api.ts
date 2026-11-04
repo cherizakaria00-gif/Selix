@@ -192,6 +192,12 @@ export function updateStaffUser(
   return request<User>('PATCH', `/users/${encodeURIComponent(id)}`, patch);
 }
 
+export async function deleteAccount() {
+  await request('DELETE', '/me');
+  await setToken(null);
+  await clearCache();
+}
+
 export async function changePassword(current: string, next: string) {
   await request('POST', '/me/password', { current, next });
 }
