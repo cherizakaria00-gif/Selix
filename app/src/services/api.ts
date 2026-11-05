@@ -57,26 +57,6 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   const t = await getToken();
   const isForm = typeof FormData !== 'undefined' && body instanceof FormData;
   let res: Response;
-  /* Ancienne requête conservée pour comparaison :
-  try {
-    res = await fetch(API_URL + path, {
-      method,
-      headers: {
-        Accept: 'application/json',
-        ...(body !== undefined && !isForm ? { 'Content-Type': 'application/json' } : null),
-        ...(t ? { Authorization: `Bearer ${t}` } : null),
-      },
-      body: body === undefined ? undefined : isForm ? body : JSON.stringify(body),
-    });
-  } catch {
-    throw new ApiError(0, 'Pas de connexion au serveur Selix.');
-  }
-  const data = await res.json().catch(() => null);
-  if (!res.ok) {
-    if (res.status === 401 && t) await setToken(null);
-    throw new ApiError(res.status, data?.error ?? `Erreur serveur (${res.status}).`);
-  }
-  */
   try {
     // Les parties multipart natives sont envoyées via expo/fetch pour accepter les fichiers Blob d'Expo.
     const fetchRequest = isForm && Platform.OS !== 'web' ? expoFetch : fetch;
@@ -109,11 +89,6 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     const detail = data?.error ?? (responseText.slice(0, 400) || res.statusText);
     throw new ApiError(res.status, `HTTP ${res.status} pendant ${method} ${path} — ${detail}`);
   }
-  /* Ancienne vérification conservée pour comparaison :
-  if (responseText && data === null) {
-    throw new ApiError(res.status, `Réponse non JSON pendant ${method} ${path} — ${responseText.slice(0, 400)}`);
-  }
-  */
   // Un JSON valide peut contenir `null` (par exemple /me/seen sans données enregistrées).
   if (responseText && !responseIsJson) {
     throw new ApiError(res.status, `Réponse non JSON pendant ${method} ${path} — ${responseText.slice(0, 400)}`);
@@ -193,12 +168,6 @@ async function uploadImage(uri: string): Promise<string> {
   if (Platform.OS === 'web') {
     form.append('file', await (await fetch(uri)).blob(), name);
   } else {
-    /* Ancien format natif gardé en commentaire :
-    const ext = name.split('.').pop()?.toLowerCase();
-    const type = ext === 'png' ? 'image/png' : ext === 'heic' ? 'image/heic' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
-    // React Native accepte { uri, name, type } comme fichier dans un FormData.
-    form.append('file', { uri, name, type } as unknown as Blob);
-    */
     const imageFile = new File(uri);
     form.append('file', imageFile, name);
   }
@@ -327,6 +296,8 @@ export type ChatRequest = {
   candidates: Record<string, unknown>[];
   /** Seul le bouton du profil peut demander explicitement une mise à jour du profil. */
   conversationMode?: 'chat' | 'profile_edit';
+  /** Premier message suivant le clic : force l'application des critères au profil. */
+  forceProfileEdit?: boolean;
   /** Critères explicites de la recherche courante, sans héritage du profil sauvegardé. */
   queryCriteria?: Profile;
   position?: Coords;
@@ -358,9 +329,6 @@ export async function transcribeAudio(uri: string): Promise<string> {
     form.append('audio', blob, `selix-recording.${extension}`);
   } else {
     const extension = /\.([a-z0-9]+)$/i.exec(uri.split(/[?#]/, 1)[0])?.[1].toLowerCase() || 'm4a';
-    /* Ancienne partie multipart native conservée : elle provoquait « Unsupported FormDataPart implementation ».
-    form.append('audio', { uri, name: `selix-recording.${extension}`, type: mime } as unknown as Blob);
-    */
     const audioFile = new File(uri);
     form.append('audio', audioFile, `selix-recording.${extension}`);
   }

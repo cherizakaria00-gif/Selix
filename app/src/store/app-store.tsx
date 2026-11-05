@@ -57,9 +57,9 @@ type AppState = {
   logout: () => Promise<void>;
   swipe: (propertyId: string, action: SwipeAction) => Promise<void>;
   resetSwipes: () => Promise<void>;
-  sendMessage: (text: string, profileEditMode?: boolean) => Promise<void>;
+  sendMessage: (text: string, profileEditMode?: boolean, forceProfileEdit?: boolean) => Promise<void>;
   /** Enregistre d'abord le message audio, puis le transcrit et l'envoie à l'assistant. */
-  sendAudioMessage: (audioUri: string, profileEditMode?: boolean) => Promise<void>;
+  sendAudioMessage: (audioUri: string, profileEditMode?: boolean, forceProfileEdit?: boolean) => Promise<void>;
   updateProfile: (patch: Partial<Profile>) => Promise<void>;
   enableLocation: () => Promise<boolean>;
   /** Demande (ou déplace) une visite à cette date ; les erreurs (créneau pris…) remontent au calendrier. */
@@ -148,7 +148,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   async function loadUser(u: User) {
     setUser(u);
     const [p, c] = await Promise.all([api.getProfile(u.id), api.getChat(u.id), loadShared(u.role)]);
-    /* Ancien chargement : profileRef.current = p ?? emptyProfile(); */
     profileRef.current = normalizeProfile(p);
     setProfile(profileRef.current);
     setChat(c);
@@ -206,7 +205,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     () =>
       properties
         .filter((p) => p.status === 'disponible' && !dislikedIds.has(p.id))
-        /* Ancienne logique : .map((p) => ({ p, score: likedIds.has(p.id) ? 100 : scoreProperty(profile, p).score })) */
         .map((p) => ({ p, score: likedIds.has(p.id) ? 100 : scoreProperty(profile, p).score }))
         .filter((x) => x.score >= MATCH_THRESHOLD)
         .sort((a, b) => b.score - a.score)
@@ -254,7 +252,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // ---- « Un nouveau bien correspond à vos besoins » ----
   const notifyFreshMatches = useEffectEvent(async (u: User, props: Property[]) => {
     const seen = await api.getSeenPropertyIds(u.id);
-    /* Ancienne logique : `if (seen)` ignorait les notifications du premier chargement où l'API renvoie null. */
     const seenIds = seen ?? [];
     const fresh = props.filter((p) => !seenIds.includes(p.id) && p.status === 'disponible');
     // Avec un token push, le serveur a déjà prévenu ce client : pas de doublon local.
@@ -346,14 +343,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setSwipes(await api.clearSwipes(user.id).catch((e) => (alertError(e), swipes)));
     },
 
-    async sendMessage(text, profileEditMode = false) {
+    async sendMessage(text, profileEditMode = false, forceProfileEdit = false) {
       if (!user || !text.trim()) return;
       const userMsg: ChatMessage = { id: api.uid('m'), role: 'user', text: text.trim(), at: Date.now() };
       const history = [...chat, userMsg];
       setChat(history);
       setThinking(true);
       try {
-        const out = await askAssistant({ text, history: chat, profile, properties, dislikedIds, position, profileEditMode });
+        const out = await askAssistant({ text, history: chat, profile, properties, dislikedIds, position, profileEditMode, forceProfileEdit });
         const reply: ChatMessage = {
           id: api.uid('m'),
           role: 'assistant',
@@ -371,7 +368,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     },
 
     // Nouvelle procédure audio : le message visible contient l'URI audio; sa transcription sert au LLM.
-    async sendAudioMessage(audioUri, profileEditMode = false) {
+    async sendAudioMessage(audioUri, profileEditMode = false, forceProfileEdit = false) {
       if (!user) return;
       const userMsg: ChatMessage = { id: api.uid('m'), role: 'user', text: '', audioUri, at: Date.now() };
       const visibleHistory = [...chat, userMsg];
@@ -385,7 +382,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const historyWithTranscript = [...chat, { ...userMsg, text: transcript }];
         persistableHistory = historyWithTranscript;
         setChat(historyWithTranscript);
-        const out = await askAssistant({ text: transcript, history: chat, profile, properties, dislikedIds, position, profileEditMode });
+        const out = await askAssistant({ text: transcript, history: chat, profile, properties, dislikedIds, position, profileEditMode, forceProfileEdit });
         const reply: ChatMessage = {
           id: api.uid('m'),
           role: 'assistant',

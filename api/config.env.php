@@ -6,25 +6,20 @@
 $env = fn(string $k, ?string $default = null) => ($v = getenv($k)) !== false && $v !== '' ? $v : $default;
 
 return [
-    // 'db' => [
-    //     'dsn' => $env('DB_DSN') ?? sprintf(
-    //         'mysql:host=%s;port=%s;dbname=%s;charset=utf8mb4',
-    //         $env('MYSQLHOST', 'localhost'),
-    //         $env('MYSQLPORT', '3306'),
-    //         $env('MYSQLDATABASE', 'selix'),
-    //     ),
-    //     'user' => $env('DB_USER') ?? $env('MYSQLUSER'),
-    //     'password' => $env('DB_PASSWORD') ?? $env('MYSQLPASSWORD'),
-    //     // Contenu PEM du certificat CA de la base (DigitalOcean : « Download CA certificate »).
-    //     // Contenu PEM, chemin d'un fichier .crt, ou REQUIRED (chiffré sans vérification).
-    //     'ssl_ca' => ($ca = $env('DB_SSL_CA')) && is_file($ca) ? file_get_contents($ca) : $ca,
-    //     'ssl_verify' => $env('DB_SSL_VERIFY') !== '0',
-    // ],
     'db' => [
-            'dsn' => 'sqlite:selix-local.sqlite',
-            'user' => null,
-            'password' => null,
-       ],
+        'dsn' => $env('DB_DSN') ?? sprintf(
+            'mysql:host=%s;port=%s;dbname=%s;charset=utf8mb4',
+            $env('MYSQLHOST', 'localhost'),
+            $env('MYSQLPORT', '3306'),
+            $env('MYSQLDATABASE', 'selix'),
+        ),
+        'user' => $env('DB_USER') ?? $env('MYSQLUSER'),
+        'password' => $env('DB_PASSWORD') ?? $env('MYSQLPASSWORD'),
+        // Contenu PEM du certificat CA de la base (DigitalOcean : « Download CA certificate »).
+        // Contenu PEM, chemin d'un fichier .crt, ou REQUIRED (chiffré sans vérification).
+        'ssl_ca' => ($ca = $env('DB_SSL_CA')) && is_file($ca) ? file_get_contents($ca) : $ca,
+        'ssl_verify' => $env('DB_SSL_VERIFY') !== '0',
+    ],
     'public_url' => $env('PUBLIC_URL', ''),
     // Space DigitalOcean pour les photos (sinon elles vont dans uploads/, effacé à chaque déploiement).
     // SPACES_ENDPOINT ne sert qu'aux tests (ex. MinIO) ; SPACES_CDN_URL par défaut : CDN du Space.

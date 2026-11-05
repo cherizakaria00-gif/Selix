@@ -30,7 +30,6 @@ const VISIT_MAX_DAYS = 90;
 const VISIT_DURATION_MS = 3_600_000;
 
 header('Access-Control-Allow-Origin: *');
-// Ancien header conservé en commentaire : header('Access-Control-Allow-Headers: Authorization, Content-Type');
 header('Access-Control-Allow-Headers: Authorization, Content-Type, ngrok-skip-browser-warning');
 header('Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS');
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') exit;

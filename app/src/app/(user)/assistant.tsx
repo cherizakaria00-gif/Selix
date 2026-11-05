@@ -46,6 +46,11 @@ const AUDIO_WAVE_SHAPE = [
   0.58, 0.9, 0.42, 0.68, 0.32, 0.84, 0.56, 0.38, 0.74, 0.46,
 ];
 
+/** Isole les groupes de chiffres en LTR pour empêcher le texte arabe RTL d'en inverser l'ordre visuel. */
+function preserveLtrNumberOrder(text: string): string {
+  return text.replace(/\d+(?:[ \u00a0\u202f]\d{3})*(?:[.,]\d+)?/g, '\u2066$&\u2069');
+}
+
 function AudioPlayback({ uri }: { uri: string }) {
   const player = useAudioPlayer(uri, { updateInterval: 250 });
   const status = useAudioPlayerStatus(player);
@@ -89,6 +94,8 @@ export default function Assistant() {
   const { user, chat, sendMessage, sendAudioMessage, thinking, properties, profile, score } = useApp();
   const { profileEdit } = useLocalSearchParams<{ profileEdit?: string }>();
   const profileEditMode = profileEdit === '1';
+  // Le premier message après le bouton est maintenant forcé côté serveur ; les suivants sont classifiés normalement.
+  const forceFirstProfileEdit = useRef(profileEditMode);
   const [text, setText] = useState('');
   const recorder = useAudioRecorder({ ...RecordingPresets.HIGH_QUALITY, isMeteringEnabled: true });
   const recorderState = useAudioRecorderState(recorder, 100);
@@ -101,8 +108,6 @@ export default function Assistant() {
   const audioLevel = typeof recorderState.metering === 'number'
     ? Math.max(0.12, Math.min(1, (recorderState.metering + 60) / 60))
     : 0.2;
-  // Ancien motif à 9 barres, trop court pour remplir le champ :
-  // const waveformShape = [0.35, 0.56, 0.76, 0.48, 1, 0.68, 0.86, 0.55, 0.32];
   const waveformShape = [0.35, 0.56, 0.76, 0.48, 1, 0.68, 0.86, 0.55, 0.32, 0.62, 0.42, 0.78, 0.5, 0.9, 0.38, 0.7, 0.54, 0.84, 0.46, 0.58, 0.82, 0.4, 0.7, 0.52, 0.92, 0.44, 0.66];
   const waveformLevels = waveformShape.map((shape) => Math.max(0.12, audioLevel * shape));
 
@@ -114,13 +119,6 @@ export default function Assistant() {
   };
   const messages = [welcome, ...chat];
 
-  // Ancienne fonction d'envoi texte conservée en commentaire :
-  // function send(value = text) {
-  //   if (!value.trim() || thinking) return;
-  //   setText('');
-  //   Keyboard.dismiss();
-  //   sendMessage(value);
-  // }
   async function send(value = text) {
     if (thinking || transcribingAudio) return;
     if (recordingAudio || recorderState.isRecording) {
@@ -134,7 +132,9 @@ export default function Assistant() {
         await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
         setText('');
         Keyboard.dismiss();
-        await sendAudioMessage(uri, profileEditMode);
+        const forceProfileEdit = forceFirstProfileEdit.current;
+        await sendAudioMessage(uri, profileEditMode, forceProfileEdit);
+        if (forceProfileEdit) forceFirstProfileEdit.current = false;
       } catch (error) {
         setAudioMessage(error instanceof Error ? error.message : 'Impossible de traiter cet enregistrement.');
         await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true }).catch(() => undefined);
@@ -147,7 +147,9 @@ export default function Assistant() {
     if (!value.trim()) return;
     setText('');
     Keyboard.dismiss();
-    sendMessage(value.trim(), profileEditMode);
+    const forceProfileEdit = forceFirstProfileEdit.current;
+    await sendMessage(value.trim(), profileEditMode, forceProfileEdit);
+    if (forceProfileEdit) forceFirstProfileEdit.current = false;
   }
 
   async function toggleAudioRecording() {
@@ -215,7 +217,9 @@ export default function Assistant() {
             renderItem={({ item }) => (
               <View style={{ gap: 8 }}>
                 <View style={[styles.bubble, item.role === 'user' ? styles.mine : styles.theirs]}>
-                  {item.audioUri ? <AudioPlayback uri={item.audioUri} /> : <Text style={styles.bubbleText}>{item.text}</Text>}
+                  {item.audioUri
+                    ? <AudioPlayback uri={item.audioUri} />
+                    : <Text style={styles.bubbleText}>{preserveLtrNumberOrder(item.text)}</Text>}
                 </View>
                 {item.propertyIds?.map((id) => {
                   const p = properties.find((x) => x.id === id);
@@ -247,24 +251,6 @@ export default function Assistant() {
           ))}
         </ScrollView>
 
-        {/* Ancien compositeur texte conservé pour comparaison :
-        <View style={styles.composer}>
-          <TextInput
-            value={text}
-            onChangeText={setText}
-            placeholder="Décrivez votre besoin…"
-            placeholderTextColor={Colors.textFaint}
-            style={styles.input}
-            multiline
-            onSubmitEditing={() => send()}
-            submitBehavior="submit"
-            returnKeyType="send"
-          />
-          <Pressable onPress={() => send()} style={[styles.send, !text.trim() && { opacity: 0.4 }]}>
-            <Ionicons name="arrow-up" size={22} color="#fff" />
-          </Pressable>
-        </View>
-        */}
         <View style={styles.composer}>
           <View style={styles.composerField}>
             {recorderState.isRecording ? (
@@ -427,8 +413,6 @@ const styles = StyleSheet.create({
     marginHorizontal: 10,
     marginBottom: 4,
   },
-  // Ancienne largeur de barres conservée en commentaire : elle remplissait trop le champ.
-  // waveformBar: { flex: 1, minWidth: 2, borderRadius: 2, backgroundColor: '#FF7190' },
   waveformBar: { width: 2, borderRadius: 1, backgroundColor: '#FF7190' },
   audioFeedback: { paddingHorizontal: 18, paddingBottom: 6, gap: 4 },
   audioMessage: { color: Colors.textMuted, fontSize: 12 },

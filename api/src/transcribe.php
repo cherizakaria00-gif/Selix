@@ -1,5 +1,4 @@
 <?php
-/** Ancien flux : transcription via OpenAI, conservé ci-dessous en commentaire. */
 /** Nouvelle transcription sécurisée via Gemini. Le client envoie un fichier multipart à POST /transcribe. */
 
 declare(strict_types=1);
@@ -84,16 +83,6 @@ function handle_transcription(array $user): array
         ];
         $mimeType = $mimeTypes[$extension];
 
-        // Ancien appel OpenAI conservé pour référence :
-        // $response = $client->post('https://api.openai.com/v1/audio/transcriptions', [
-        //     'headers' => ['Authorization' => 'Bearer ' . $key, 'Accept' => 'application/json'],
-        //     'multipart' => [
-        //         ['name' => 'file', 'contents' => $handle, 'filename' => 'selix-recording.' . $extension],
-        //         ['name' => 'model', 'contents' => 'gpt-transcribe'],
-        //         ['name' => 'prompt', 'contents' => TRANSCRIPTION_VOCAB_PROMPT],
-        //     ],
-        // ]);
-
         // Gemini Files API: upload the recording, then reference its URI in the transcription request.
         $uploadStart = $client->post('https://generativelanguage.googleapis.com/upload/v1beta/files', [
             'headers' => [
@@ -141,13 +130,9 @@ function handle_transcription(array $user): array
             }
         }
         $text = trim(implode("\n", $textParts));
-        // Ancien comportement : une réponse vide était considérée comme une erreur serveur.
-        // if ($text === '') throw new HttpError(502, 'Transcription returned no text.');
         // Une réponse vide est normale quand l'enregistrement ne contient aucune parole.
         if ($text === '') return ['text' => ''];
 
-        // Ancien filtre : ne détectait que la répétition exacte du prompt.
-        // if ($normalize($text) === $normalize(TRANSCRIPTION_VOCAB_PROMPT)) return ['text' => ''];
         // Nouveau filtre : compare aussi les échos partiels et les listes isolées de mots-clés.
         $normalize = static fn(string $value): string => mb_strtolower(
             trim((string) preg_replace('/[^\p{L}\p{N}]+/u', ' ', $value)),
@@ -192,7 +177,6 @@ function handle_transcription(array $user): array
                 error_log('Selix Gemini temporary audio cleanup: ' . $cleanupError->getMessage());
             }
         }
-        // Ancienne fermeture conservée : fclose($handle);
         // Guzzle peut déjà avoir fermé le flux après l'envoi.
         if (is_resource($handle)) {
             fclose($handle);

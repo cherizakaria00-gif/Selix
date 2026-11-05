@@ -214,69 +214,6 @@ export const MATCH_THRESHOLD = 65;
 // Compréhension des besoins
 // ---------------------------------------------------------------------------
 
-// Ancien parser (sans les synonymes ajoutés) conservé ci-dessous :
-// const CITIES: Record<string, string[]> = {
-//   Casablanca: ['casablanca', 'casa', 'dar el beida', 'derb'],
-//   Rabat: ['rabat'],
-//   Marrakech: ['marrakech', 'marrakesh', 'kech'],
-//   Tanger: ['tanger', 'tangier', 'tanja'],
-//   Agadir: ['agadir'],
-//   Fès: ['fes', 'fez'],
-//   Bouskoura: ['bouskoura'],
-//   Mohammedia: ['mohammedia'],
-//   Kénitra: ['kenitra'],
-//   'Dar Bouazza': ['dar bouazza'],
-//   Témara: ['temara'],
-//   Salé: ['sale'],
-//   Meknès: ['meknes'],
-//   Oujda: ['oujda'],
-// };
-//
-// const DISTRICTS: Record<string, { keys: string[]; city: string }> = {
-//   Anfa: { keys: ['anfa(?! 5)'], city: 'Casablanca' },
-//   Maârif: { keys: ['maarif'], city: 'Casablanca' },
-//   Racine: { keys: ['racine'], city: 'Casablanca' },
-//   Gauthier: { keys: ['gauthier'], city: 'Casablanca' },
-//   'Aïn Diab': { keys: ['ain diab'], city: 'Casablanca' },
-//   Californie: { keys: ['californie'], city: 'Casablanca' },
-//   Bourgogne: { keys: ['bourgogne'], city: 'Casablanca' },
-//   'CIL': { keys: ['cil'], city: 'Casablanca' },
-//   Palmeraie: { keys: ['palmeraie'], city: 'Marrakech' },
-//   Guéliz: { keys: ['gueliz'], city: 'Marrakech' },
-//   Hivernage: { keys: ['hivernage'], city: 'Marrakech' },
-//   Agdal: { keys: ['agdal'], city: 'Rabat' },
-//   'Hay Riad': { keys: ['hay riad'], city: 'Rabat' },
-//   Souissi: { keys: ['souissi'], city: 'Rabat' },
-//   Malabata: { keys: ['malabata'], city: 'Tanger' },
-//   Marina: { keys: ['marina'], city: 'Agadir' },
-//   'Ville Verte': { keys: ['ville verte'], city: 'Bouskoura' },
-//   Chrifia: { keys: ['chrifia'], city: 'Marrakech' },
-//   'Anfa 5': { keys: ['anfa 5'], city: 'Dar Bouazza' },
-// };
-//
-// const TYPES: Record<PropertyType, RegExp> = {
-//   appartement: /\b(appartements?|appart|appt|duplex|penthouse|[tf][1-6])\b/,
-//   villa: /\b(villas?|maison|dar(?! bouazza| el beida))\b/,
-//   studio: /\bstudios?\b/,
-//   riad: /\briads?\b/,
-//   bureau: /\b(bureaux?|plateau|local commercial|magasin)\b/,
-//   terrain: /\b(terrains?|lot)\b/,
-// };
-//
-// const FEATURES: Record<string, RegExp> = {
-//   padel: /padel/,
-//   piscine: /piscine/,
-//   jardin: /jardin/,
-//   parking: /parking|garage/,
-//   meublé: /\bmeuble/,
-//   'vue mer': /vue (sur )?(la )?mer|bord de mer|front de mer/,
-//   terrasse: /terrasse/,
-//   ascenseur: /ascenseur/,
-//   sécurité: /securi|gardien|residence fermee/,
-//   climatisation: /clim/,
-//   balcon: /balcon/,
-// };
-
 const CITIES: Record<string, string[]> = {
   Casablanca: ['casablanca', 'casa', 'dar el beida', 'derb', 'الدار البيضاء'],
   Rabat: ['rabat', 'الرباط'],
@@ -318,29 +255,13 @@ const DISTRICTS: Record<string, { keys: string[]; city: string }> = {
 
 const TYPES: Record<PropertyType, RegExp> = {
   appartement: /\b(appartements?|appart|appt|duplex|penthouse|[tf][1-6])\b|شقة|شقق|بارطما|دوبلكس/iu,
-  villa: /\b(villas?|maison|dar(?! bouazza| el beida))\b|فيلا|فيلات|منزل|منازل/iu,
+  villa: /\b(villas?|l?vilat|l?villat|l?villas?|maison|dar(?! bouazza| el beida))\b|فيلا|فيلات|منزل|منازل/iu,
   studio: /\bstudios?\b|ستوديو|استوديو/iu,
   riad: /\briads?\b|رياض/iu,
   bureau: /\b(bureaux?|plateau|local commercial|magasin)\b|مكتب|مكاتب/iu,
   terrain: /\b(terrains?|lot)\b|أرض|أراضي|ارض|اراضي/iu,
 };
 
-
-/* Ancien dictionnaire conservé en commentaire selon la consigne du projet.
-const FEATURES: Record<string, RegExp> = {
-  padel: /padel/,
-  piscine: /piscine/,
-  jardin: /jardin/,
-  parking: /parking|garage/,
-  meublé: /\bmeuble/,
-  'vue mer': /vue (sur )?(la )?mer|bord de mer|front de mer/,
-  terrasse: /terrasse/,
-  ascenseur: /ascenseur/,
-  sécurité: /securi|gardien|residence fermee/,
-  climatisation: /clim/,
-  balcon: /balcon/,
-};
-*/
 
 // Ajout arabe : les synonymes sont ramenés aux clés de caractéristiques utilisées par le score.
 const FEATURES: Record<string, RegExp> = {
@@ -354,7 +275,7 @@ const FEATURES: Record<string, RegExp> = {
   ascenseur: /ascenseur|مصعد|أسانسير|اسانسير/iu,
   sécurité: /securi|gardien|residence fermee|أمن|امن|حراسة|حارس|آمن|امن/iu,
   climatisation: /clim|تكييف|مكيف|مكيفة|مكيف الهواء/iu,
-  balcon: /balcon|شرفة|بلكون|/iu,
+  balcon: /balcon|شرفة|بلكون/iu,
 };
 
 // JavaScript \b ne reconnaît pas les lettres arabes : les alias arabes sont cherchés comme sous-chaînes.
@@ -452,26 +373,6 @@ export function parseNeeds(input: string): Needs {
   return needs;
 }
 
-// Ancienne fonction applyNeeds conservée ci-dessous :
-// export function applyNeeds(profile: Profile, needs: Needs): Profile {
-//   const base: Profile = needs.reset
-//     ? { ...emptyProfile(), learned: profile.learned, notifyNearby: profile.notifyNearby, radiusKm: profile.radiusKm }
-//     : profile;
-//   const transactionChanged = needs.transaction && needs.transaction !== base.transaction;
-//   return {
-//     ...base,
-//     transaction: needs.transaction ?? base.transaction,
-//     cities: needs.cities.length ? needs.cities : base.cities,
-//     districts: needs.districts.length ? needs.districts : needs.cities.length ? [] : base.districts,
-//     types: needs.types.length ? needs.types : base.types,
-//     // Passer de location à achat (ou l'inverse) rend l'ancien budget caduc.
-//     budgetMin: needs.budgetMin ?? (needs.budgetMax || transactionChanged ? undefined : base.budgetMin),
-//     budgetMax: needs.budgetMax ?? (transactionChanged ? undefined : base.budgetMax),
-//     bedroomsMin: needs.bedroomsMin ?? base.bedroomsMin,
-//     mustHave: Array.from(new Set([...base.mustHave, ...needs.mustHave])),
-//   };
-// }
-
 export function applyNeeds(profile: Profile, needs: Needs): Profile {
   // Le reset réinitialise les critères de ce profil unique, tout en gardant les préférences apprises.
   const base: Profile = needs.reset
@@ -525,6 +426,8 @@ export type AssistantInput = {
   position?: Coords | null;
   /** Activé uniquement depuis « Modifier avec l’assistant » dans le profil. */
   profileEditMode?: boolean;
+  /** Force seulement le premier message après le clic à mettre à jour le profil. */
+  forceProfileEdit?: boolean;
 };
 
 export type AssistantOutput = {
@@ -540,6 +443,15 @@ function isTypeExploration(profile: Profile, needs: Needs): boolean {
     needs.types.length === 1 &&
     !profile.types.includes(needs.types[0])
   );
+}
+
+/** Reconnaît aussi les demandes explicites de catalogue en darija pour le moteur local de secours. */
+function isExplicitCatalogExploration(text: string, needs: Needs): boolean {
+  if (needs.types.length !== 1) return false;
+  const normalized = norm(text);
+  const asksToSeeListings = /\b(nchouf|nchof|nchoof|chouf|chof|voir|montre|montrez|affiche|show|disponible|existent|kayn|kaynin)\b/.test(normalized)
+    || /\b(w|ou|et)\s+l?(vilat|villas?|buro(?:uat)?|bureaux?|studios?|riads?|terrains?|appart(?:ement)?s?)\b/.test(normalized);
+  return asksToSeeListings;
 }
 
 /** Applique à la requête temporaire uniquement les critères explicitement cités avec le nouveau type. */
@@ -577,8 +489,6 @@ export async function askAssistant(input: AssistantInput): Promise<AssistantOutp
 async function askRemote(input: AssistantInput): Promise<AssistantOutput> {
   const needs = parseNeeds(input.text);
   const profileEditMode = Boolean(input.profileEditMode);
-  // Ancienne règle remplacée : la détection locale du changement de type choisissait directement le mode exploration.
-  // const typeExploration = isTypeExploration(input.profile, needs);
   const queryProfile = profileEditMode ? applyNeeds(input.profile, needs) : input.profile;
   // Le serveur classifie le message avant de choisir entre la requête complète et les suggestions classées.
   const queryCriteria = applyNeeds(emptyProfile(), needs);
@@ -598,110 +508,21 @@ async function askRemote(input: AssistantInput): Promise<AssistantOutput> {
     profile: queryProfile,
     candidates,
     conversationMode: profileEditMode ? 'profile_edit' : 'chat',
+    forceProfileEdit: Boolean(input.forceProfileEdit),
     queryCriteria,
     position: input.position ?? undefined,
     nearMe: needs.nearMe,
   });
-  const merged = profileEditMode && data.needs
+  // Ne sauvegarder que si le classifieur considère ce message comme une modification du profil.
+  const merged = data.intent === 'profile_edit' && (data.needs || input.forceProfileEdit)
     ? applyNeeds(queryProfile, { ...parseNeeds(''), ...(data.needs as Partial<Needs>) })
     : input.profile;
   return { reply: data.reply, propertyIds: data.propertyIds ?? [], profile: merged };
 }
-// Ancienne fonction askLocal conservée ci-dessous :
-// function askLocal({ text, history, profile, properties, dislikedIds, position }: AssistantInput): AssistantOutput {
-//   const needs = parseNeeds(text);
-//   const next = applyNeeds(profile, needs);
-//   const understood =
-//     needs.transaction || needs.cities.length || needs.types.length || needs.budgetMax ||
-//     needs.budgetMin || needs.bedroomsMin || needs.mustHave.length;
-//
-//   if (needs.reset) {
-//     return {
-//       reply: "C'est noté, on repart de zéro.\nVous cherchez plutôt à louer ou à acheter ?",
-//       propertyIds: [],
-//       profile: next,
-//     };
-//   }
-//
-//   if (needs.greeting && !understood && !needs.nearMe) {
-//     return {
-//       reply:
-//         "Bonjour, je suis l'assistant Selix.\nDites-moi ce que vous cherchez, par exemple :\n« Appartement 3 chambres à louer à Casablanca, max 12 000 DH »",
-//       propertyIds: [],
-//       profile: next,
-//     };
-//   }
-//
-//   if (!understood && !needs.nearMe && !needs.more) {
-//     return {
-//       reply:
-//         "Je n'ai pas bien saisi. Précisez-moi : location ou achat, la ville, le type de bien et votre budget.\nEx. : « Villa avec piscine à Marrakech, budget 5 millions »",
-//       propertyIds: [],
-//       profile: next,
-//     };
-//   }
-//
-//   const lastShown = new Set(
-//     needs.more ? history.filter((m) => m.role === 'assistant').flatMap((m) => m.propertyIds ?? []) : [],
-//   );
-//   let ranked = rankProperties(next, properties, {
-//     exclude: new Set([...dislikedIds, ...lastShown]),
-//     position,
-//   }).filter((s) => s.property.status === 'disponible');
-//
-//   if (needs.nearMe) {
-//     if (!position) {
-//       return {
-//         reply: "Activez la localisation pour que je trouve les biens autour de vous (Profil → Localisation).",
-//         propertyIds: [],
-//         profile: next,
-//       };
-//     }
-//     ranked = ranked
-//       .filter((s) => (s.distance ?? Infinity) <= 15)
-//       .sort((a, b) => b.score - a.score || (a.distance ?? 0) - (b.distance ?? 0));
-//   }
-//
-//   // Ville et transaction explicites = critères éliminatoires pour l'assistant.
-//   const picks = ranked
-//     .filter((s) => !next.transaction || s.property.transaction === next.transaction)
-//     .filter((s) => !next.cities.length || next.cities.includes(s.property.city))
-//     .filter((s) => s.score >= 50)
-//     .slice(0, 3);
-//   const summary = describeProfile(next);
-//   const lines: string[] = [];
-//   if (summary) lines.push(`Compris. Je cherche : ${summary}.`);
-//   if (picks.length) {
-//     lines.push(
-//       picks.length === 1 ? 'Voici le bien qui vous correspond le mieux :' : `Voici mes ${picks.length} meilleures propositions :`,
-//     );
-//   } else {
-//     lines.push(
-//       "Aucun bien ne correspond exactement pour l'instant. Je vous enverrai une notification dès qu'un bien arrive.",
-//     );
-//   }
-//
-//   const ask = !next.transaction
-//     ? 'Vous souhaitez louer ou acheter ?'
-//     : !next.cities.length
-//       ? 'Dans quelle ville cherchez-vous ?'
-//       : !next.budgetMax
-//         ? 'Quel est votre budget maximum ?'
-//         : !next.bedroomsMin && !next.types.some((x) => x === 'bureau' || x === 'terrain' || x === 'studio')
-//           ? 'Combien de chambres au minimum ?'
-//           : null;
-//   if (ask) lines.push(ask);
-//   else if (picks.length) lines.push('Swipez-les dans Matching pour affiner mes prochaines propositions.');
-//
-//   return { reply: lines.join('\n'), propertyIds: picks.map((s) => s.property.id), profile: next };
-// }
-
 function askLocal(input: AssistantInput): AssistantOutput {
   const { text, history, properties, dislikedIds, position } = input;
   const needs = parseNeeds(text);
   // Les critères explicites du message mettent à jour le profil enregistré.
-  // Ancien comportement : chaque message de chat appliquait immédiatement ses critères au profil.
-  // const next = applyNeeds(input.profile, needs);
   const next = input.profileEditMode ? applyNeeds(input.profile, needs) : input.profile;
   const understood =
     needs.transaction || needs.cities.length || needs.types.length || needs.budgetMax ||
@@ -715,7 +536,7 @@ function askLocal(input: AssistantInput): AssistantOutput {
     };
   }
 
-  if (isTypeExploration(input.profile, needs)) {
+  if (!input.forceProfileEdit && (isExplicitCatalogExploration(text, needs) || isTypeExploration(input.profile, needs))) {
     const requestedType = needs.types[0];
     const typeLabel: Record<PropertyType, string> = {
       appartement: 'appartements', villa: 'villas', studio: 'studios',
