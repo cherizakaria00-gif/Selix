@@ -11,6 +11,8 @@ return [
     'public_url' => 'https://votre-domaine.ma/api',
     // Clé API Claude (console.anthropic.com). Reste sur le serveur, jamais dans l'app.
     'anthropic_api_key' => '',
+    // Clé Gemini pour la transcription audio (ou variable serveur GEMINI_API_KEY).
+    'gemini_api_key' => '',
     // Comptes créés au premier lancement (mots de passe hachés en base, puis inutiles ici).
     'seed_users' => [
         ['id' => 'u-admin', 'name' => 'Admin Selix', 'email' => 'admin@selix.ma', 'phone' => '+212600000000', 'role' => 'admin', 'password' => 'CHANGEZ-MOI'],

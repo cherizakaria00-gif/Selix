@@ -9,6 +9,7 @@ import {
   askAssistant,
   emptyProfile,
   learnFromSwipe,
+  normalizeProfile,
   parseNeeds,
   rankProperties,
   scoreProperty,
@@ -56,7 +57,9 @@ type AppState = {
   logout: () => Promise<void>;
   swipe: (propertyId: string, action: SwipeAction) => Promise<void>;
   resetSwipes: () => Promise<void>;
-  sendMessage: (text: string) => Promise<void>;
+  sendMessage: (text: string, profileEditMode?: boolean) => Promise<void>;
+  /** Enregistre d'abord le message audio, puis le transcrit et l'envoie à l'assistant. */
+  sendAudioMessage: (audioUri: string, profileEditMode?: boolean) => Promise<void>;
   updateProfile: (patch: Partial<Profile>) => Promise<void>;
   enableLocation: () => Promise<boolean>;
   /** Demande (ou déplace) une visite à cette date ; les erreurs (créneau pris…) remontent au calendrier. */
@@ -145,7 +148,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   async function loadUser(u: User) {
     setUser(u);
     const [p, c] = await Promise.all([api.getProfile(u.id), api.getChat(u.id), loadShared(u.role)]);
-    profileRef.current = p ?? emptyProfile();
+    /* Ancien chargement : profileRef.current = p ?? emptyProfile(); */
+    profileRef.current = normalizeProfile(p);
     setProfile(profileRef.current);
     setChat(c);
     if (u.role === 'user' && Platform.OS !== 'web') {
@@ -202,6 +206,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     () =>
       properties
         .filter((p) => p.status === 'disponible' && !dislikedIds.has(p.id))
+        /* Ancienne logique : .map((p) => ({ p, score: likedIds.has(p.id) ? 100 : scoreProperty(profile, p).score })) */
         .map((p) => ({ p, score: likedIds.has(p.id) ? 100 : scoreProperty(profile, p).score }))
         .filter((x) => x.score >= MATCH_THRESHOLD)
         .sort((a, b) => b.score - a.score)
@@ -249,15 +254,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // ---- « Un nouveau bien correspond à vos besoins » ----
   const notifyFreshMatches = useEffectEvent(async (u: User, props: Property[]) => {
     const seen = await api.getSeenPropertyIds(u.id);
-    if (seen) {
-      const fresh = props.filter((p) => !seen.includes(p.id) && p.status === 'disponible');
-      // Avec un token push, le serveur a déjà prévenu ce client : pas de doublon local.
-      const matches = (pushTokenRef.current ? [] : fresh)
-        .map((p) => scoreProperty(profileRef.current, p))
-        .filter((s) => s.score >= MATCH_THRESHOLD)
-        .slice(0, 3);
-      for (const m of matches) await notifyNewMatch(m.property, m.score);
-    }
+    /* Ancienne logique : `if (seen)` ignorait les notifications du premier chargement où l'API renvoie null. */
+    const seenIds = seen ?? [];
+    const fresh = props.filter((p) => !seenIds.includes(p.id) && p.status === 'disponible');
+    // Avec un token push, le serveur a déjà prévenu ce client : pas de doublon local.
+    const matches = (pushTokenRef.current ? [] : fresh)
+      .map((p) => scoreProperty(profileRef.current, p))
+      .filter((s) => s.score >= MATCH_THRESHOLD)
+      .slice(0, 3);
+    for (const m of matches) await notifyNewMatch(m.property, m.score);
     await api.saveSeenPropertyIds(u.id, Array.from(new Set([...(seen ?? []), ...props.map((p) => p.id)])));
   });
   useEffect(() => {
@@ -265,10 +270,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [isClient, user, properties]);
 
   async function persistProfile(next: Profile) {
-    profileRef.current = next;
-    setProfile(next);
+    const normalized = normalizeProfile(next);
+    profileRef.current = normalized;
+    setProfile(normalized);
     // Hors connexion, le profil reste à jour dans l'app et sera renvoyé au prochain changement.
-    if (user) await api.saveProfile(user.id, next).catch(() => undefined);
+    if (user) await api.saveProfile(user.id, normalized).catch(() => undefined);
   }
 
   const value: AppState = {
@@ -298,7 +304,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     async register({ needs, profile: initial, ...input }) {
       const u = await api.register(input);
-      let p: Profile = { ...emptyProfile(), ...initial };
+      let p: Profile = normalizeProfile({ ...emptyProfile(), ...initial });
       if (needs?.trim()) p = applyNeeds(p, parseNeeds(needs));
       await api.saveProfile(u.id, p);
       await loadUser(u);
@@ -340,14 +346,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setSwipes(await api.clearSwipes(user.id).catch((e) => (alertError(e), swipes)));
     },
 
-    async sendMessage(text) {
+    async sendMessage(text, profileEditMode = false) {
       if (!user || !text.trim()) return;
       const userMsg: ChatMessage = { id: api.uid('m'), role: 'user', text: text.trim(), at: Date.now() };
       const history = [...chat, userMsg];
       setChat(history);
       setThinking(true);
       try {
-        const out = await askAssistant({ text, history: chat, profile, properties, dislikedIds, position });
+        const out = await askAssistant({ text, history: chat, profile, properties, dislikedIds, position, profileEditMode });
         const reply: ChatMessage = {
           id: api.uid('m'),
           role: 'assistant',
@@ -359,6 +365,41 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setChat(next);
         await api.saveChat(user.id, next).catch(() => undefined);
         await persistProfile(out.profile);
+      } finally {
+        setThinking(false);
+      }
+    },
+
+    // Nouvelle procédure audio : le message visible contient l'URI audio; sa transcription sert au LLM.
+    async sendAudioMessage(audioUri, profileEditMode = false) {
+      if (!user) return;
+      const userMsg: ChatMessage = { id: api.uid('m'), role: 'user', text: '', audioUri, at: Date.now() };
+      const visibleHistory = [...chat, userMsg];
+      // La bulle apparaît avant d'attendre la transcription et la réponse du modèle.
+      setChat(visibleHistory);
+      let persistableHistory = visibleHistory;
+      setThinking(true);
+      try {
+        const transcript = (await api.transcribeAudio(audioUri)).trim();
+        if (!transcript) throw new Error('Aucune parole détectée dans cet enregistrement.');
+        const historyWithTranscript = [...chat, { ...userMsg, text: transcript }];
+        persistableHistory = historyWithTranscript;
+        setChat(historyWithTranscript);
+        const out = await askAssistant({ text: transcript, history: chat, profile, properties, dislikedIds, position, profileEditMode });
+        const reply: ChatMessage = {
+          id: api.uid('m'),
+          role: 'assistant',
+          text: out.reply,
+          propertyIds: out.propertyIds,
+          at: Date.now(),
+        };
+        const next = [...historyWithTranscript, reply];
+        setChat(next);
+        await api.saveChat(user.id, next).catch(() => undefined);
+        await persistProfile(out.profile);
+      } catch (error) {
+        await api.saveChat(user.id, persistableHistory).catch(() => undefined);
+        throw error;
       } finally {
         setThinking(false);
       }

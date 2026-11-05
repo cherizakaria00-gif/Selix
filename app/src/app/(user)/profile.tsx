@@ -114,7 +114,7 @@ export default function Profile() {
             icon="sparkles"
             variant="ghost"
             style={{ marginTop: 14 }}
-            onPress={() => router.push('/assistant')}
+            onPress={() => router.push('/assistant?profileEdit=1')}
           />
         </Card>
 

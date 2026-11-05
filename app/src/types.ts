@@ -65,6 +65,16 @@ export type Swipe = {
   at: number;
 };
 
+export type LearnedPreferences = {
+  cities: Record<string, number>;
+  districts: Record<string, number>;
+  types: Record<string, number>;
+  features: Record<string, number>;
+  /** Moyenne des prix aimés, par type de transaction. */
+  likedPrice: Partial<Record<Transaction, { sum: number; n: number }>>;
+  bedrooms: { sum: number; n: number };
+};
+
 /** Besoins explicites (dits au chat / onboarding) + préférences apprises (swipes). */
 export type Profile = {
   transaction?: Transaction;
@@ -75,15 +85,7 @@ export type Profile = {
   budgetMax?: number;
   bedroomsMin?: number;
   mustHave: string[];
-  learned: {
-    cities: Record<string, number>;
-    districts: Record<string, number>;
-    types: Record<string, number>;
-    features: Record<string, number>;
-    /** Moyenne des prix aimés, par type de transaction. */
-    likedPrice: Partial<Record<Transaction, { sum: number; n: number }>>;
-    bedrooms: { sum: number; n: number };
-  };
+  learned: LearnedPreferences;
   notifyNearby: boolean;
   radiusKm: number;
 };
@@ -111,5 +113,7 @@ export type ChatMessage = {
   role: 'user' | 'assistant';
   text: string;
   propertyIds?: string[];
+  /** URI locale de l'audio ; le texte transcrit reste disponible pour le contexte LLM. */
+  audioUri?: string;
   at: number;
 };

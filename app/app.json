@@ -70,6 +70,13 @@
           "photosPermission": "Selix accède à vos photos pour ajouter des images aux biens."
         }
       ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Selix a besoin du microphone pour enregistrer et transcrire votre recherche immobilière.",
+          "recordAudioAndroid": true
+        }
+      ],
       "expo-secure-store",
       "expo-font",
       "expo-image",

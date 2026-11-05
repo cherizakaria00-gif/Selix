@@ -13,6 +13,7 @@ require __DIR__ . '/vendor/autoload.php';
 require __DIR__ . '/src/lib.php';
 require __DIR__ . '/src/push.php';
 require __DIR__ . '/src/chat.php';
+require __DIR__ . '/src/transcribe.php';
 require __DIR__ . '/src/spaces.php';
 
 const TRANSACTIONS = ['location', 'achat'];
@@ -29,7 +30,8 @@ const VISIT_MAX_DAYS = 90;
 const VISIT_DURATION_MS = 3_600_000;
 
 header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Headers: Authorization, Content-Type');
+// Ancien header conservé en commentaire : header('Access-Control-Allow-Headers: Authorization, Content-Type');
+header('Access-Control-Allow-Headers: Authorization, Content-Type, ngrok-skip-browser-warning');
 header('Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS');
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') exit;
 
@@ -532,6 +534,10 @@ function route(string $method, string $path): mixed
 
         case ['POST', 'chat', 1]:
             return handle_chat(require_user());
+
+        // Ajout de la transcription audio, avec la même authentification que le chat.
+        case ['POST', 'transcribe', 1]:
+            return handle_transcription(require_user());
     }
     throw new HttpError(404, 'Route inconnue.');
 }

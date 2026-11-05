@@ -1,10 +1,21 @@
 import { Ionicons } from '@expo/vector-icons';
+import {
+  AudioModule,
+  RecordingPresets,
+  setAudioModeAsync,
+  useAudioRecorder,
+  useAudioRecorderState,
+  useAudioPlayer,
+  useAudioPlayerStatus,
+} from 'expo-audio';
 import { useRef, useState } from 'react';
+import { useLocalSearchParams } from 'expo-router';
 import {
   ActivityIndicator,
   FlatList,
   Keyboard,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -29,11 +40,71 @@ const SUGGESTIONS = [
   'Recommencer ma recherche',
 ];
 
+const AUDIO_WAVE_SHAPE = [
+  0.24, 0.42, 0.7, 0.48, 0.88, 0.56, 0.34, 0.76, 0.48, 0.96,
+  0.62, 0.38, 0.82, 0.54, 0.3, 0.72, 0.94, 0.5, 0.36, 0.78,
+  0.58, 0.9, 0.42, 0.68, 0.32, 0.84, 0.56, 0.38, 0.74, 0.46,
+];
+
+function AudioPlayback({ uri }: { uri: string }) {
+  const player = useAudioPlayer(uri, { updateInterval: 250 });
+  const status = useAudioPlayerStatus(player);
+  const duration = Math.max(0, Math.floor(status.duration || 0));
+  const current = Math.max(0, Math.floor(status.currentTime || 0));
+  const progress = duration ? Math.min(1, current / duration) : 0;
+  const activeBars = Math.floor(progress * AUDIO_WAVE_SHAPE.length);
+  const timeLabel = (value: number) => `${Math.floor(value / 60)}:${String(value % 60).padStart(2, '0')}`;
+
+  return (
+    <View style={styles.audioPlayback}>
+      <Pressable
+        onPress={() => {
+          if (status.playing) player.pause();
+          else void setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true }).then(() => player.play()).catch(() => undefined);
+        }}
+        accessibilityRole="button"
+        accessibilityLabel={status.playing ? 'Mettre l’audio en pause' : 'Lire le message audio'}
+        style={styles.audioPlayButton}>
+        <Ionicons name={status.playing ? 'pause' : 'play'} size={17} color="#fff" />
+      </Pressable>
+      <View style={styles.audioPlaybackDetails}>
+        <View style={styles.audioWaveform} accessibilityLabel="Onde sonore du message vocal">
+          {AUDIO_WAVE_SHAPE.map((height, index) => (
+            <View
+              key={index}
+              style={[styles.audioWaveBar, {
+                height: 5 + height * 20,
+                backgroundColor: index < activeBars ? '#fff' : 'rgba(255,255,255,0.42)',
+              }]}
+            />
+          ))}
+        </View>
+        <Text style={styles.audioDuration}>{timeLabel(status.playing ? current : duration)}</Text>
+      </View>
+    </View>
+  );
+}
+
 export default function Assistant() {
-  const { user, chat, sendMessage, thinking, properties, profile, score } = useApp();
+  const { user, chat, sendMessage, sendAudioMessage, thinking, properties, profile, score } = useApp();
+  const { profileEdit } = useLocalSearchParams<{ profileEdit?: string }>();
+  const profileEditMode = profileEdit === '1';
   const [text, setText] = useState('');
+  const recorder = useAudioRecorder({ ...RecordingPresets.HIGH_QUALITY, isMeteringEnabled: true });
+  const recorderState = useAudioRecorderState(recorder, 100);
+  const [recordingAudio, setRecordingAudio] = useState(false);
+  const [transcribingAudio, setTranscribingAudio] = useState(false);
+  const [audioMessage, setAudioMessage] = useState('');
+  const [permissionSettingsRequired, setPermissionSettingsRequired] = useState(false);
   const list = useRef<FlatList<ChatMessage>>(null);
   const criteria = describeProfile(profile);
+  const audioLevel = typeof recorderState.metering === 'number'
+    ? Math.max(0.12, Math.min(1, (recorderState.metering + 60) / 60))
+    : 0.2;
+  // Ancien motif à 9 barres, trop court pour remplir le champ :
+  // const waveformShape = [0.35, 0.56, 0.76, 0.48, 1, 0.68, 0.86, 0.55, 0.32];
+  const waveformShape = [0.35, 0.56, 0.76, 0.48, 1, 0.68, 0.86, 0.55, 0.32, 0.62, 0.42, 0.78, 0.5, 0.9, 0.38, 0.7, 0.54, 0.84, 0.46, 0.58, 0.82, 0.4, 0.7, 0.52, 0.92, 0.44, 0.66];
+  const waveformLevels = waveformShape.map((shape) => Math.max(0.12, audioLevel * shape));
 
   const welcome: ChatMessage = {
     id: 'welcome',
@@ -43,12 +114,67 @@ export default function Assistant() {
   };
   const messages = [welcome, ...chat];
 
-  function send(value = text) {
-    if (!value.trim() || thinking) return;
+  // Ancienne fonction d'envoi texte conservée en commentaire :
+  // function send(value = text) {
+  //   if (!value.trim() || thinking) return;
+  //   setText('');
+  //   Keyboard.dismiss();
+  //   sendMessage(value);
+  // }
+  async function send(value = text) {
+    if (thinking || transcribingAudio) return;
+    if (recordingAudio || recorderState.isRecording) {
+      setRecordingAudio(false);
+      setTranscribingAudio(true);
+      setAudioMessage('');
+      try {
+        await recorder.stop();
+        const uri = recorder.uri;
+        if (!uri) throw new Error('L’enregistrement audio est introuvable.');
+        await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
+        setText('');
+        Keyboard.dismiss();
+        await sendAudioMessage(uri, profileEditMode);
+      } catch (error) {
+        setAudioMessage(error instanceof Error ? error.message : 'Impossible de traiter cet enregistrement.');
+        await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true }).catch(() => undefined);
+      } finally {
+        setRecordingAudio(false);
+        setTranscribingAudio(false);
+      }
+      return;
+    }
+    if (!value.trim()) return;
     setText('');
-    // On ferme le clavier pour laisser voir la réponse et les biens proposés.
     Keyboard.dismiss();
-    sendMessage(value);
+    sendMessage(value.trim(), profileEditMode);
+  }
+
+  async function toggleAudioRecording() {
+    if (recordingAudio || transcribingAudio || thinking) return;
+    setAudioMessage('');
+    setPermissionSettingsRequired(false);
+    try {
+      const permission = await AudioModule.requestRecordingPermissionsAsync();
+      if (!permission.granted) {
+        setPermissionSettingsRequired(!permission.canAskAgain);
+        setAudioMessage(permission.canAskAgain
+          ? 'L’accès au microphone est refusé. Appuyez sur le micro et autorisez-le pour enregistrer.'
+          : 'L’accès au microphone est bloqué. Autorisez-le dans les réglages du téléphone.');
+        return;
+      }
+      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+      await recorder.prepareToRecordAsync();
+      recorder.record();
+      setRecordingAudio(true);
+    } catch (error) {
+      setRecordingAudio(false);
+      setAudioMessage(error instanceof Error ? error.message : 'Impossible de traiter cet enregistrement.');
+      if (recorderState.isRecording) await recorder.stop().catch(() => undefined);
+      await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true }).catch(() => undefined);
+    } finally {
+      setTranscribingAudio(false);
+    }
   }
 
   return (
@@ -89,7 +215,7 @@ export default function Assistant() {
             renderItem={({ item }) => (
               <View style={{ gap: 8 }}>
                 <View style={[styles.bubble, item.role === 'user' ? styles.mine : styles.theirs]}>
-                  <Text style={styles.bubbleText}>{item.text}</Text>
+                  {item.audioUri ? <AudioPlayback uri={item.audioUri} /> : <Text style={styles.bubbleText}>{item.text}</Text>}
                 </View>
                 {item.propertyIds?.map((id) => {
                   const p = properties.find((x) => x.id === id);
@@ -121,6 +247,7 @@ export default function Assistant() {
           ))}
         </ScrollView>
 
+        {/* Ancien compositeur texte conservé pour comparaison :
         <View style={styles.composer}>
           <TextInput
             value={text}
@@ -137,6 +264,57 @@ export default function Assistant() {
             <Ionicons name="arrow-up" size={22} color="#fff" />
           </Pressable>
         </View>
+        */}
+        <View style={styles.composer}>
+          <View style={styles.composerField}>
+            {recorderState.isRecording ? (
+              <View style={styles.waveform} accessibilityLabel="Niveau sonore du microphone">
+                {waveformLevels.map((level, index) => (
+                  <View key={index} style={[styles.waveformBar, { height: 5 + level * 22 }]} />
+                ))}
+              </View>
+            ) : (
+              <TextInput
+                value={text}
+                onChangeText={setText}
+                placeholder={transcribingAudio ? 'Transcription en cours…' : 'Décrivez votre besoin…'}
+                placeholderTextColor={Colors.textFaint}
+                style={styles.composerTextInput}
+                multiline
+                editable={!transcribingAudio}
+                onSubmitEditing={() => send()}
+                submitBehavior="submit"
+                returnKeyType="send"
+              />
+            )}
+            {!recordingAudio && !recorderState.isRecording && !transcribingAudio ? (
+              <Pressable
+                onPress={toggleAudioRecording}
+                disabled={thinking}
+                accessibilityRole="button"
+                accessibilityLabel="Enregistrer une demande vocale"
+                style={[styles.audioButton, thinking && { opacity: 0.5 }]}>
+                <Ionicons name="mic" size={20} color="#fff" />
+              </Pressable>
+            ) : null}
+          </View>
+          <Pressable
+            onPress={() => send()}
+            disabled={(!text.trim() && !recordingAudio && !recorderState.isRecording) || thinking || transcribingAudio}
+            style={[styles.send, ((!text.trim() && !recordingAudio && !recorderState.isRecording) || thinking || transcribingAudio) && { opacity: 0.4 }]}>
+            {transcribingAudio ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="arrow-up" size={22} color="#fff" />}
+          </Pressable>
+        </View>
+        {audioMessage ? (
+          <View style={styles.audioFeedback}>
+            <Text style={styles.audioMessage}>{audioMessage}</Text>
+            {permissionSettingsRequired ? (
+              <Pressable onPress={() => Linking.openSettings()} accessibilityRole="button">
+                <Text style={styles.settingsLink}>Ouvrir les réglages</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
       </KeyboardAvoidingView>
     </Screen>
   );
@@ -178,6 +356,19 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 4,
   },
   bubbleText: { color: '#fff', fontSize: 15, lineHeight: 21 },
+  audioPlayback: { minWidth: 190, maxWidth: 260, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  audioPlayButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  audioPlaybackDetails: { flex: 1, gap: 4 },
+  audioWaveform: { height: 25, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 2 },
+  audioWaveBar: { width: 3, borderRadius: 2 },
+  audioDuration: { color: '#fff', fontSize: 11 },
   suggestions: { paddingHorizontal: 16, gap: 8, paddingVertical: 8 },
   suggestion: {
     borderWidth: 1,
@@ -195,6 +386,53 @@ const styles = StyleSheet.create({
     padding: 12,
     paddingTop: 4,
   },
+  composerField: {
+    flex: 1,
+    minHeight: 48,
+    maxHeight: 110,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    backgroundColor: Colors.card,
+    borderColor: Colors.border,
+    borderWidth: 1,
+    borderRadius: 24,
+    paddingLeft: 16,
+    paddingRight: 6,
+  },
+  composerTextInput: {
+    flex: 1,
+    color: '#fff',
+    fontSize: 15,
+    minHeight: 46,
+    maxHeight: 108,
+    paddingTop: 12,
+    paddingBottom: 12,
+  },
+  audioButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  waveform: {
+    flex: 1,
+    height: 34,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 2,
+    marginHorizontal: 10,
+    marginBottom: 4,
+  },
+  // Ancienne largeur de barres conservée en commentaire : elle remplissait trop le champ.
+  // waveformBar: { flex: 1, minWidth: 2, borderRadius: 2, backgroundColor: '#FF7190' },
+  waveformBar: { width: 2, borderRadius: 1, backgroundColor: '#FF7190' },
+  audioFeedback: { paddingHorizontal: 18, paddingBottom: 6, gap: 4 },
+  audioMessage: { color: Colors.textMuted, fontSize: 12 },
+  settingsLink: { color: Colors.gold, fontSize: 12, fontWeight: '600' },
   input: {
     flex: 1,
     color: '#fff',
