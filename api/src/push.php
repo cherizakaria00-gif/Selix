@@ -32,7 +32,9 @@ function notify_new_property(array $property): int
     $messages = [];
     foreach ($rows as $row) {
         if (isset($disliked[$row['user_id']]) || !$row['profile']) continue;
-        $score = score_property(json_decode($row['profile'], true) ?: [], $property);
+        $savedProfile = json_decode($row['profile'], true) ?: [];
+        // Profil unique de l'utilisateur, alimenté par l'IA et les swipes.
+        $score = score_property($savedProfile, $property);
         if ($score < MATCH_THRESHOLD) continue;
         $messages[] = [
             'to' => $row['token'],

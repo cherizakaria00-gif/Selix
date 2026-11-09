@@ -2,7 +2,7 @@
 
 API REST en PHP 8.1+ / MySQL, pensée pour l'hébergement Hostinger du site Selix.
 Elle partage biens, comptes, swipes et leads entre tous les téléphones, héberge les
-photos, envoie les notifications push et fait répondre l'assistant via Claude.
+photos, envoie les notifications push, transcrit l'audio via Gemini et fait répondre l'assistant via Claude.
 
 | Route | Accès | Rôle |
 | --- | --- | --- |
@@ -15,6 +15,7 @@ photos, envoie les notifications push et fait répondre l'assistant via Claude.
 | `GET/PUT /me/profile`, `/me/chat`, `/me/seen` | connecté | Profil IA, historique du chat, biens déjà vus |
 | `POST /push-tokens`, `DELETE /push-tokens/{token}` | connecté | Token push Expo de l'appareil |
 | `POST /chat` | connecté | Assistant Claude (`claude-opus-5-5`), 40 messages/heure par client |
+| `POST /transcribe` | connecté | Transcription audio Gemini, 30 demandes/heure par client |
 
 Les tables (préfixe `selix_`) sont créées au premier appel, avec les 12 biens de
 démonstration et les deux comptes de `config.php`.
@@ -53,6 +54,7 @@ Le disque des conteneurs App Platform est effacé à chaque déploiement : quand
 2. **Configurer** `config.php` (déjà prérempli, jamais versionné) :
    - `public_url` : l'URL où sera le dossier, ex. `https://selix.ma/api` ;
    - `anthropic_api_key` : clé créée sur console.anthropic.com (reste sur le serveur) ;
+   - `gemini_api_key` : clé Gemini pour la transcription audio, ou variable serveur `GEMINI_API_KEY` ;
    - le mot de passe admin initial y est généré aléatoirement : connectez-vous avec, puis
      retirez-le du fichier (il ne sert qu'à la création de la base).
 3. **Envoyer** tout le dossier `selix-api/` (y compris `vendor/` et les `.htaccess`) dans

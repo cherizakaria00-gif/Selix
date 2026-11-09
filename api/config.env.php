@@ -31,6 +31,7 @@ return [
         'endpoint' => $env('SPACES_ENDPOINT'),
         'cdn_url' => $env('SPACES_CDN_URL'),
     ],
+    'gemini_api_key' => $env('GEMINI_API_KEY', ''),
     'anthropic_api_key' => $env('ANTHROPIC_API_KEY', ''),
     'seed_users' => [
         ['id' => 'u-admin', 'name' => 'Admin Selix', 'email' => 'admin@selix.ma', 'phone' => '+212600000000', 'role' => 'admin', 'password' => $env('SEED_ADMIN_PASSWORD', bin2hex(random_bytes(16)))],

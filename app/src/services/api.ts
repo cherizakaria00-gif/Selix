@@ -8,9 +8,12 @@
  *   dernières données reçues au lieu d'un écran vide.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { fetch as expoFetch } from 'expo/fetch';
+import { File } from 'expo-file-system';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
+import type { Coords } from '@/services/geo';
 import type { Approval, ChatMessage, Lead, Profile, Property, PropertyStats, StaffRole, Swipe, SwipeAction, User } from '@/types';
 
 export const API_URL = (process.env.EXPO_PUBLIC_SELIX_API_URL ?? '').replace(/\/+$/, '');
@@ -55,22 +58,40 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   const isForm = typeof FormData !== 'undefined' && body instanceof FormData;
   let res: Response;
   try {
-    res = await fetch(API_URL + path, {
+    // Les parties multipart natives sont envoyées via expo/fetch pour accepter les fichiers Blob d'Expo.
+    const fetchRequest = isForm && Platform.OS !== 'web' ? expoFetch : fetch;
+    res = await fetchRequest(API_URL + path, {
       method,
       headers: {
         Accept: 'application/json',
         ...(body !== undefined && !isForm ? { 'Content-Type': 'application/json' } : null),
         ...(t ? { Authorization: `Bearer ${t}` } : null),
+        // Le tunnel ngrok gratuit peut sinon répondre avec une page HTML d'avertissement.
+        'ngrok-skip-browser-warning': 'true',
       },
       body: body === undefined ? undefined : isForm ? body : JSON.stringify(body),
     });
-  } catch {
-    throw new ApiError(0, 'Pas de connexion au serveur Selix.');
+  } catch (error) {
+    const detail = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+    throw new ApiError(0, `Échec réseau pendant ${method} ${path} — ${detail}`);
   }
-  const data = await res.json().catch(() => null);
+  const responseText = await res.text();
+  let data: { error?: string } | null = null;
+  let responseIsJson = false;
+  try {
+    data = responseText ? (JSON.parse(responseText) as { error?: string }) : null;
+    responseIsJson = responseText.length > 0;
+  } catch {
+    // Garder un extrait des réponses HTML du proxy ou du tunnel pour diagnostiquer l'erreur.
+  }
   if (!res.ok) {
     if (res.status === 401 && t) await setToken(null);
-    throw new ApiError(res.status, data?.error ?? `Erreur serveur (${res.status}).`);
+    const detail = data?.error ?? (responseText.slice(0, 400) || res.statusText);
+    throw new ApiError(res.status, `HTTP ${res.status} pendant ${method} ${path} — ${detail}`);
+  }
+  // Un JSON valide peut contenir `null` (par exemple /me/seen sans données enregistrées).
+  if (responseText && !responseIsJson) {
+    throw new ApiError(res.status, `Réponse non JSON pendant ${method} ${path} — ${responseText.slice(0, 400)}`);
   }
   return data as T;
 }
@@ -147,10 +168,8 @@ async function uploadImage(uri: string): Promise<string> {
   if (Platform.OS === 'web') {
     form.append('file', await (await fetch(uri)).blob(), name);
   } else {
-    const ext = name.split('.').pop()?.toLowerCase();
-    const type = ext === 'png' ? 'image/png' : ext === 'heic' ? 'image/heic' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
-    // React Native accepte { uri, name, type } comme fichier dans un FormData.
-    form.append('file', { uri, name, type } as unknown as Blob);
+    const imageFile = new File(uri);
+    form.append('file', imageFile, name);
   }
   const { url } = await request<{ url: string }>('POST', '/photos', form);
   return url;
@@ -281,11 +300,44 @@ export type ChatRequest = {
   history: { role: ChatMessage['role']; text: string }[];
   profile: Profile;
   candidates: Record<string, unknown>[];
+  /** Seul le bouton du profil peut demander explicitement une mise à jour du profil. */
+  conversationMode?: 'chat' | 'profile_edit';
+  /** Premier message suivant le clic : force l'application des critères au profil. */
+  forceProfileEdit?: boolean;
+  /** Critères explicites de la recherche courante, sans héritage du profil sauvegardé. */
+  queryCriteria?: Profile;
+  position?: Coords;
+  nearMe?: boolean;
 };
 
-export type ChatResponse = { reply: string; propertyIds?: string[]; needs?: Record<string, unknown> };
+export type ChatResponse = {
+  reply: string;
+  propertyIds?: string[];
+  needs?: Record<string, unknown>;
+  intent?: 'exploration' | 'chat' | 'profile_edit';
+};
 
 /** Assistant Claude, appelé par le serveur (la clé API n'est jamais dans l'app). */
 export function postChat(body: ChatRequest): Promise<ChatResponse> {
   return request<ChatResponse>('POST', '/chat', body);
+}
+
+// Envoie l'audio au serveur authentifié pour transcription avant l'appel au chat.
+export async function transcribeAudio(uri: string): Promise<string> {
+  const form = new FormData();
+  if (Platform.OS === 'web') {
+    const response = await fetch(uri);
+    if (!response.ok) throw new ApiError(0, 'Impossible de lire l’enregistrement audio.');
+    const blob = await response.blob();
+    if (!blob.size) throw new ApiError(400, 'L’enregistrement audio est vide.');
+    const mime = blob.type.toLowerCase();
+    const extension = mime.includes('ogg') ? 'ogg' : mime.includes('mp4') ? 'm4a' : mime.includes('wav') ? 'wav' : 'webm';
+    form.append('audio', blob, `selix-recording.${extension}`);
+  } else {
+    const extension = /\.([a-z0-9]+)$/i.exec(uri.split(/[?#]/, 1)[0])?.[1].toLowerCase() || 'm4a';
+    const audioFile = new File(uri);
+    form.append('audio', audioFile, `selix-recording.${extension}`);
+  }
+  const result = await request<{ text: string }>('POST', '/transcribe', form);
+  return result.text;
 }
