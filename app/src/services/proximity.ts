@@ -56,6 +56,11 @@ export async function requestForegroundLocation() {
   return granted;
 }
 
+export async function requestBackgroundLocation() {
+  const { granted } = await Location.requestBackgroundPermissionsAsync();
+  return granted;
+}
+
 export async function getForegroundPermission() {
   const { granted } = await Location.getForegroundPermissionsAsync();
   return granted;
@@ -93,9 +98,9 @@ export async function syncBackgroundGeofences(
   }
   const fg = await Location.getForegroundPermissionsAsync();
   if (!fg.granted) return 'denied';
+  // L'autorisation n'est jamais demandée ici : elle suit l'écran d'explication du profil.
   const bg = await Location.getBackgroundPermissionsAsync();
-  const bgGranted = bg.granted || (await Location.requestBackgroundPermissionsAsync()).granted;
-  if (!bgGranted) return 'denied';
+  if (!bg.granted) return 'denied';
 
   await Location.startGeofencingAsync(
     GEOFENCE_TASK,

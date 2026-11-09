@@ -5,7 +5,7 @@ import { Card, Field, GradientButton, Header, KeyboardAware, Screen, SectionTitl
 import { Colors } from '@/constants/theme';
 import { useApp } from '@/store/app-store';
 import type { Role } from '@/types';
-import { notify } from '@/utils/platform';
+import { notify, openPrivacyPolicy } from '@/utils/platform';
 
 const ROLE_LABEL: Record<Role, string> = {
   admin: 'Super admin',
@@ -111,6 +111,7 @@ export default function Settings() {
             </Text>
             <GradientButton label="Actualiser les données" variant="ghost" icon="refresh" onPress={reload} loading={loading} style={{ marginTop: 14 }} />
           </Card>
+          <GradientButton label="Politique de confidentialité" variant="ghost" icon="document-text-outline" onPress={openPrivacyPolicy} />
           <GradientButton label="Se déconnecter" variant="ghost" icon="log-out-outline" onPress={logout} />
         </ScrollView>
       </KeyboardAware>

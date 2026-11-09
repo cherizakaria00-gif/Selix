@@ -6,7 +6,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View, type TextInputInstance }
 import { Badge, Field, GradientButton, Header, KeyboardAware, Screen } from '@/components/ui';
 import { Colors, Radius } from '@/constants/theme';
 import { useApp } from '@/store/app-store';
-import { isWeb } from '@/utils/platform';
+import { isWeb, openPrivacyPolicy } from '@/utils/platform';
 
 export default function Login() {
   const { login } = useApp();
@@ -125,7 +125,11 @@ export default function Login() {
             )}
           </View>
           <Text style={styles.legal}>
-            En continuant, vous acceptez nos conditions d’utilisation et notre politique de confidentialité.
+            En continuant, vous acceptez notre{' '}
+            <Text style={styles.legalLink} accessibilityRole="link" onPress={openPrivacyPolicy}>
+              politique de confidentialité
+            </Text>
+            .
           </Text>
         </ScrollView>
       </KeyboardAware>
@@ -161,4 +165,5 @@ const styles = StyleSheet.create({
   hintText: { flex: 1, color: Colors.pink, fontSize: 13, lineHeight: 18 },
   link: { color: Colors.textMuted, textAlign: 'center', fontSize: 14 },
   legal: { color: Colors.textFaint, fontSize: 11, textAlign: 'center', marginTop: 20 },
+  legalLink: { color: Colors.pink, textDecorationLine: 'underline' },
 });

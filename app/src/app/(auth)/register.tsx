@@ -7,6 +7,7 @@ import { Chip, Field, GradientButton, Header, KeyboardAware, Screen } from '@/co
 import { Colors, Radius } from '@/constants/theme';
 import { useApp } from '@/store/app-store';
 import type { PropertyType, Transaction } from '@/types';
+import { openPrivacyPolicy } from '@/utils/platform';
 
 const CITIES = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Dar Bouazza', 'Bouskoura', 'Fès', 'Mohammedia'];
 const TYPES: { key: PropertyType; label: string; icon: React.ComponentProps<typeof Ionicons>['name'] }[] = [
@@ -266,7 +267,16 @@ export default function Register() {
           {step < STEPS.length - 1 ? (
             <GradientButton label="Continuer" disabled={!canNext} onPress={() => setStep(step + 1)} />
           ) : (
-            <GradientButton label="Créer mon compte" icon="sparkles" disabled={!canNext} loading={loading} onPress={finish} />
+            <>
+              <GradientButton label="Créer mon compte" icon="sparkles" disabled={!canNext} loading={loading} onPress={finish} />
+              <Text style={styles.legal}>
+                En créant un compte, vous acceptez notre{' '}
+                <Text style={styles.legalLink} accessibilityRole="link" onPress={openPrivacyPolicy}>
+                  politique de confidentialité
+                </Text>
+                .
+              </Text>
+            </>
           )}
         </View>
       </KeyboardAware>
@@ -279,6 +289,8 @@ const styles = StyleSheet.create({
   bar: { flex: 1, height: 4, borderRadius: 2, backgroundColor: Colors.border },
   barActive: { backgroundColor: Colors.pink },
   content: { padding: 24 },
+  legal: { color: Colors.textFaint, fontSize: 11, textAlign: 'center', marginTop: 12 },
+  legalLink: { color: Colors.pink, textDecorationLine: 'underline' },
   step: { color: Colors.pink, fontSize: 13, fontWeight: '600' },
   title: { color: Colors.text, fontSize: 30, fontWeight: '500', marginTop: 4, marginBottom: 8 },
   label: { color: Colors.text, fontSize: 15, fontWeight: '600', marginTop: 20, marginBottom: 12 },

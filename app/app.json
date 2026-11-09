@@ -56,7 +56,8 @@
           "locationAlwaysAndWhenInUsePermission": "Selix utilise votre position, même en arrière-plan, pour vous prévenir quand un bien qui vous correspond est à proximité.",
           "locationWhenInUsePermission": "Selix utilise votre position pour vous montrer les biens autour de vous.",
           "isIosBackgroundLocationEnabled": true,
-          "isAndroidBackgroundLocationEnabled": true
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": false
         }
       ],
       [
@@ -68,7 +69,9 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Selix accède à vos photos pour ajouter des images aux biens."
+          "photosPermission": "Selix accède à vos photos pour ajouter des images aux biens.",
+          "cameraPermission": false,
+          "microphonePermission": false
         }
       ],
       "expo-secure-store",

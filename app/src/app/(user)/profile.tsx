@@ -8,12 +8,12 @@ import { Colors } from '@/constants/theme';
 import { describeProfile } from '@/services/ai';
 import { isExpoGo } from '@/services/proximity';
 import { useApp } from '@/store/app-store';
-import { confirmAction, notify } from '@/utils/platform';
+import { confirmAction, notify, openPrivacyPolicy } from '@/utils/platform';
 
 const RADII = [0.5, 1, 2, 5, 10];
 
 export default function Profile() {
-  const { user, profile, updateProfile, logout, deleteAccount, locationGranted, enableLocation, backgroundStatus, likedIds, dislikedIds } =
+  const { user, profile, updateProfile, logout, deleteAccount, locationGranted, enableLocation, enableBackgroundLocation, backgroundStatus, likedIds, dislikedIds } =
     useApp();
   const [deleting, setDeleting] = useState(false);
   const l = profile.learned;
@@ -35,6 +35,18 @@ export default function Profile() {
         : backgroundStatus === 'denied'
           ? 'Autorisez la localisation « Toujours » pour être alerté app fermée.'
           : 'Inactive';
+
+  // Google Play exige cette explication dans l'app, juste avant la demande du système.
+  async function allowBackgroundAlerts() {
+    const accepted = await confirmAction(
+      'Alertes app fermée',
+      'Selix collecte votre position en arrière-plan, même lorsque l’application est fermée ou que vous ne l’utilisez pas, pour vous prévenir quand vous passez près d’un bien qui vous correspond. Votre position n’est pas enregistrée sur nos serveurs. Vous pouvez retirer cette autorisation à tout moment dans les réglages de votre téléphone.',
+      'Continuer',
+      'Pas maintenant',
+      false,
+    );
+    if (accepted) await enableBackgroundLocation();
+  }
 
   async function removeAccount() {
     const confirmed = await confirmAction(
@@ -108,6 +120,9 @@ export default function Profile() {
             <GradientButton label="Activer la localisation" icon="navigate" onPress={enableLocation} style={{ marginTop: 12 }} />
           )}
           {locationGranted && backgroundStatus === 'denied' && Platform.OS !== 'web' && (
+            <GradientButton label="Activer les alertes app fermée" icon="notifications-outline" onPress={allowBackgroundAlerts} style={{ marginTop: 12 }} />
+          )}
+          {locationGranted && backgroundStatus === 'denied' && Platform.OS !== 'web' && (
             <GradientButton
               label="Ouvrir les réglages"
               variant="ghost"
@@ -140,6 +155,7 @@ export default function Profile() {
         {isExpoGo && (
           <Text style={[styles.meta, { textAlign: 'center' }]}>Mode aperçu Expo Go</Text>
         )}
+        <GradientButton label="Politique de confidentialité" variant="ghost" icon="document-text-outline" onPress={openPrivacyPolicy} />
         <GradientButton label="Se déconnecter" variant="ghost" icon="log-out-outline" onPress={logout} />
         <GradientButton label="Supprimer mon compte" variant="danger" icon="trash-outline" loading={deleting} onPress={removeAccount} />
       </ScrollView>

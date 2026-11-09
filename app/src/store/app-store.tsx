@@ -20,6 +20,7 @@ import { getPushToken, Notifications, notifyNewMatch, setupNotifications } from 
 import {
   checkNearby,
   getForegroundPermission,
+  requestBackgroundLocation,
   requestForegroundLocation,
   syncBackgroundGeofences,
   type BackgroundStatus,
@@ -60,6 +61,8 @@ type AppState = {
   sendMessage: (text: string) => Promise<void>;
   updateProfile: (patch: Partial<Profile>) => Promise<void>;
   enableLocation: () => Promise<boolean>;
+  /** À appeler seulement après l'écran d'explication du profil. */
+  enableBackgroundLocation: () => Promise<void>;
   /** Demande (ou déplace) une visite à cette date ; les erreurs (créneau pris…) remontent au calendrier. */
   requestVisit: (propertyId: string, visitAt: number, note?: string) => Promise<void>;
   cancelVisit: (leadId: string) => Promise<void>;
@@ -385,6 +388,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setPosition({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
       }
       return granted;
+    },
+
+    async enableBackgroundLocation() {
+      await requestBackgroundLocation();
+      setBackgroundStatus(await syncBackgroundGeofences(nearbyCandidates, profile.radiusKm, profile.notifyNearby));
     },
 
     async requestVisit(propertyId, visitAt, note) {

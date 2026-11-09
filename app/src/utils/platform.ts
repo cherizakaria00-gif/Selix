@@ -1,5 +1,5 @@
 import { router, type Href } from 'expo-router';
-import { Alert, Platform, useWindowDimensions } from 'react-native';
+import { Alert, Linking, Platform, useWindowDimensions } from 'react-native';
 
 /** Sur le web, l'app sert de tableau de bord admin (app.selix.io). */
 export const isWeb = Platform.OS === 'web';
@@ -17,14 +17,19 @@ export function notify(title: string, message?: string) {
   else Alert.alert(title, message);
 }
 
-export function confirmAction(title: string, message: string, confirmLabel: string): Promise<boolean> {
+export function confirmAction(title: string, message: string, confirmLabel: string, cancelLabel = 'Annuler', destructive = true): Promise<boolean> {
   if (isWeb) return Promise.resolve(window.confirm(`${title}\n\n${message}`));
   return new Promise((resolve) =>
     Alert.alert(title, message, [
-      { text: 'Annuler', style: 'cancel', onPress: () => resolve(false) },
-      { text: confirmLabel, style: 'destructive', onPress: () => resolve(true) },
-    ]),
+      { text: cancelLabel, style: 'cancel', onPress: () => resolve(false) },
+      { text: confirmLabel, style: destructive ? 'destructive' : 'default', onPress: () => resolve(true) },
+    ], { cancelable: false }),
   );
+}
+
+/** Ouvre la politique de confidentialité publiée sur le site. */
+export function openPrivacyPolicy() {
+  return Linking.openURL('https://selix.io/fr/privacy/');
 }
 
 /** Revient en arrière ; sur le web, une page ouverte par son adresse n'a pas d'historique. */
