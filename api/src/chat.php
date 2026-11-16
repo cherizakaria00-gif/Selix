@@ -22,10 +22,16 @@ Tu es l'assistant de Selix, agence immobilière au Maroc (location et achat : ap
 Ton rôle : comprendre ce que cherche le client et lui proposer les biens qui lui correspondent.
 
 Règles :
-- Réponds dans la langue du client : français par défaut ; arabe en caractères arabes s'il s'exprime en arabe ; anglais s'il s'exprime en anglais.
+- Les seules langues autorisées pour reply sont le français (fr), l'anglais (en), l'arabe (ar) et l'espagnol (es). Réponds dans la langue du dernier message du client : français en français, anglais en anglais, arabe en arabe et espagnol en espagnol. Même si le client te demande une autre langue, ne réponds jamais dans une langue extérieure à ces quatre choix.
+- La darija marocaine, écrite en caractères arabes ou en Arabizi (par exemple « bghit », « chno kayn », « wach »), appartient ici au choix ar : réponds en arabe avec l'alphabet arabe ; tu peux employer la darija si le message est en darija. Les mots français isolés comme « budget », « appartement » ou « studio » ne changent pas la langue dominante du message.
+- Si le message mélange plusieurs langues, utilise sa langue dominante parmi les quatre choix. Pour une réponse très courte, un montant seul ou une langue non prise en charge, reprends la dernière langue prise en charge employée par le client dans l'historique ; à défaut, utilise le français. Le français des consignes, des champs de contexte, des annonces et des réponses précédentes de l'assistant ne doit pas imposer la langue de reply.
+- Renseigne replyLanguage avec fr, en, ar ou es selon cette décision ; le texte reply doit respecter ce choix. Les noms propres, titres officiels des annonces et clés techniques du JSON peuvent conserver leur forme d'origine.
 - Sois chaleureux, concret et bref : 2 à 4 phrases, sans liste à puces ni markdown. Les prix sont en MAD (DH).
 - Ne propose QUE des biens présents dans <candidats>, par leur id, dans propertyIds (3 au maximum, les plus pertinents d'abord). Ne cite aucun bien qui n'y est pas et n'invente ni prix ni caractéristique.
 - Si aucun candidat ne convient vraiment, dis-le honnêtement, laisse propertyIds vide et pose une question utile (budget, ville, type, nombre de chambres…).
+- Respecte le budget annoncé par le client. Ne lui demande jamais de l'augmenter, de le dépasser ou de faire un effort financier, même pour inclure un bien précis. N'emploie pas de formulations comme « pouvez-vous augmenter votre budget ? » ou « wach ntl3o lmizania l 7.2 milion bach tdkhel Villa Souissi ? ».
+- Si les biens disponibles dépassent son budget, indique simplement qu'aucun bien ne correspond dans cette limite. Propose, sans insistance, d'explorer une autre ville, un autre quartier, une surface, un type ou des équipements différents en conservant le même budget. Tu peux demander le budget s'il n'a pas encore été précisé ; s'il est déjà connu, ne le redemande pas dans le but de le revoir à la hausse.
+- Une hausse du budget doit venir spontanément du client. Ne déduis jamais un nouveau budget du prix d'une annonce et ne renseigne jamais un budget supérieur dans needs sans demande explicite du client. Les règles du mode profile_edit continuent de s'appliquer à toute modification du profil.
 - S'il manque une information essentielle (location ou achat, ville, budget), pose UNE question à la fois. Cette règle ne s'applique pas avant l'affichage des biens en mode type_exploration.
 - needs : uniquement ce que le client vient d'exprimer ou de modifier dans son dernier message (laisse vide ce qu'il n'a pas dit). Villes et quartiers avec l'orthographe des données Selix (ex. Casablanca, Marrakech, Dar Bouazza, Maârif). Budget en MAD : loyer mensuel pour une location, prix total pour un achat (« 2 millions » = 2000000, « 15k » = 15000).
 - Le profil fourni est le profil unique du client : il réunit ses critères actuels, les préférences apprises par les swipes et l'affinement des échanges avec l'IA.
@@ -282,6 +288,7 @@ function chat_schema(): array
         'type' => 'object',
         'properties' => [
             'reply' => ['type' => 'string'],
+            'replyLanguage' => ['type' => 'string', 'enum' => ['fr', 'en', 'ar', 'es']],
             'propertyIds' => $strings,
             'needs' => [
                 'type' => 'object',
@@ -298,7 +305,7 @@ function chat_schema(): array
                 'additionalProperties' => false,
             ],
         ],
-        'required' => ['reply', 'propertyIds', 'needs'],
+        'required' => ['reply', 'replyLanguage', 'propertyIds', 'needs'],
         'additionalProperties' => false,
     ];
 }
@@ -436,18 +443,13 @@ function handle_chat(array $user): array
     $reply = $data['reply'];
     if ($typeExploration && $ids && empty($data['propertyIds'])) {
         // Le LLM a demandé une précision avant de choisir des IDs; affiche d'abord les biens trouvés.
-        $typeLabels = [
-            'appartement' => 'appartements', 'villa' => 'villas', 'studio' => 'studios',
-            'riad' => 'riads', 'bureau' => 'bureaux', 'terrain' => 'terrains',
+        $explorationReplies = [
+            'fr' => 'Voici quelques biens disponibles. Vous préférez acheter ou louer ?',
+            'en' => 'Here are some available properties. Would you prefer to buy or rent?',
+            'ar' => 'هذه بعض العقارات المتاحة. هل تفضل الشراء أم الكراء؟',
+            'es' => 'Estos son algunos inmuebles disponibles. ¿Prefieres comprar o alquilar?',
         ];
-        $typeLabel = $typeLabels[$type] ?? 'biens';
-        if (preg_match('/\p{Arabic}/u', $message)) {
-            $reply = 'هذه بعض العقارات المتاحة حالياً. هل تفضل الشراء أم الكراء؟';
-        } elseif (preg_match('/\b(bghit|nchouf|nchof|lvilat|w lvilat)\b/i', $message)) {
-            $reply = "Hadi chi $typeLabel kaynin daba. Bghiti tchri wla tkri?";
-        } else {
-            $reply = "Voici quelques $typeLabel disponibles. Vous préférez acheter ou louer ?";
-        }
+        $reply = $explorationReplies[$data['replyLanguage'] ?? 'fr'] ?? $explorationReplies['fr'];
     }
     $out = [
         'reply' => $reply,

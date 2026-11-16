@@ -53,19 +53,41 @@ function preserveLtrNumberOrder(text: string): string {
 function AudioPlayback({ uri }: { uri: string }) {
   const player = useAudioPlayer(uri, { updateInterval: 250 });
   const status = useAudioPlayerStatus(player);
+  const playbackPending = useRef(false);
+  const [playbackError, setPlaybackError] = useState('');
   const duration = Math.max(0, Math.floor(status.duration || 0));
   const current = Math.max(0, Math.floor(status.currentTime || 0));
   const progress = duration ? Math.min(1, current / duration) : 0;
   const activeBars = Math.floor(progress * AUDIO_WAVE_SHAPE.length);
   const timeLabel = (value: number) => `${Math.floor(value / 60)}:${String(value % 60).padStart(2, '0')}`;
 
+  async function togglePlayback() {
+    if (playbackPending.current) return;
+    playbackPending.current = true;
+    setPlaybackError('');
+    try {
+      if (player.playing) {
+        player.pause();
+        return;
+      }
+      await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
+      // À la fin d'une piste, play() seul ne suffit pas pour la réécouter.
+      if (status.didJustFinish || (player.duration > 0 && player.currentTime >= player.duration)) {
+        await player.seekTo(0);
+      }
+      player.play();
+    } catch (error) {
+      console.warn('[Selix audio] Lecture impossible :', error);
+      setPlaybackError(error instanceof Error ? error.message : 'Impossible de lire cet audio.');
+    } finally {
+      playbackPending.current = false;
+    }
+  }
+
   return (
     <View style={styles.audioPlayback}>
       <Pressable
-        onPress={() => {
-          if (status.playing) player.pause();
-          else void setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true }).then(() => player.play()).catch(() => undefined);
-        }}
+        onPress={() => { void togglePlayback(); }}
         accessibilityRole="button"
         accessibilityLabel={status.playing ? 'Mettre l’audio en pause' : 'Lire le message audio'}
         style={styles.audioPlayButton}>
@@ -84,6 +106,7 @@ function AudioPlayback({ uri }: { uri: string }) {
           ))}
         </View>
         <Text style={styles.audioDuration}>{timeLabel(status.playing ? current : duration)}</Text>
+        {playbackError ? <Text style={styles.audioDuration} accessibilityLiveRegion="polite">{playbackError}</Text> : null}
       </View>
     </View>
   );
@@ -96,13 +119,15 @@ export default function Assistant() {
   // Le premier message après le bouton est maintenant forcé côté serveur ; les suivants sont classifiés normalement.
   const forceFirstProfileEdit = useRef(profileEditMode);
   const [text, setText] = useState('');
-  const recorder = useAudioRecorder({ ...RecordingPresets.HIGH_QUALITY, isMeteringEnabled: true });
+  const recorder = useAudioRecorder({ ...RecordingPresets.HIGH_QUALITY, isMeteringEnabled: true, directory: 'document' });
   const recorderState = useAudioRecorderState(recorder, 100);
   const [recordingAudio, setRecordingAudio] = useState(false);
   const [transcribingAudio, setTranscribingAudio] = useState(false);
   const [audioMessage, setAudioMessage] = useState('');
   const [permissionSettingsRequired, setPermissionSettingsRequired] = useState(false);
   const list = useRef<FlatList<ChatMessage>>(null);
+  const followingLatest = useRef(true);
+  const scrollGestureActive = useRef(false);
   const criteria = describeProfile(profile);
   const audioLevel = typeof recorderState.metering === 'number'
     ? Math.max(0.12, Math.min(1, (recorderState.metering + 60) / 60))
@@ -117,6 +142,13 @@ export default function Assistant() {
     at: 0,
   };
   const messages = [welcome, ...chat];
+
+  function scrollToLatestIfFollowing() {
+    if (followingLatest.current && !scrollGestureActive.current) {
+      // Sans animation : aucun défilement automatique ne continue pendant un nouveau geste.
+      list.current?.scrollToEnd({ animated: false });
+    }
+  }
 
   async function send(value = text) {
     if (thinking || transcribingAudio) return;
@@ -212,9 +244,28 @@ export default function Assistant() {
             data={messages}
             keyExtractor={(m) => m.id}
             contentContainerStyle={{ padding: 16, gap: 12 }}
-            onContentSizeChange={() => list.current?.scrollToEnd({ animated: true })}
-            // Le clavier qui s'ouvre ou se ferme change la hauteur de la liste : le dernier message reste en vue.
-            onLayout={() => list.current?.scrollToEnd({ animated: false })}
+            scrollEventThrottle={16}
+            onScroll={({ nativeEvent }) => {
+              const { contentSize, contentOffset, layoutMeasurement } = nativeEvent;
+              const distanceToBottom =
+                contentSize.height - layoutMeasurement.height - contentOffset.y;
+
+              followingLatest.current = distanceToBottom <= 100;
+            }}
+            onScrollBeginDrag={() => {
+              scrollGestureActive.current = true;
+            }}
+            onScrollEndDrag={() => {
+              scrollGestureActive.current = false;
+            }}
+            onMomentumScrollBegin={() => {
+              scrollGestureActive.current = true;
+            }}
+            onMomentumScrollEnd={() => {
+              scrollGestureActive.current = false;
+            }}
+            onContentSizeChange={scrollToLatestIfFollowing}
+            onLayout={scrollToLatestIfFollowing}
             renderItem={({ item }) => (
               <View style={{ gap: 8 }}>
                 <View style={[styles.bubble, item.role === 'user' ? styles.mine : styles.theirs]}>

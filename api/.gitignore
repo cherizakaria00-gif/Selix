@@ -5,3 +5,23 @@ data/
 selix.env
 ca-certificate.crt
 vendor/
+
+# Environnements Python locaux
+.venv*/
+venv/
+
+# Cache Python
+__pycache__/
+*.py[cod]
+
+# Base locale et fichiers SQLite temporaires
+*.sqlite
+*.sqlite-*
+
+# Variables locales et journaux
+.env
+.env.*
+!.env.example
+*.log
+
+/asr/models/
