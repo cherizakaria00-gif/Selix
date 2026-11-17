@@ -264,7 +264,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     await api.saveSeenPropertyIds(u.id, Array.from(new Set([...(seen ?? []), ...props.map((p) => p.id)])));
   });
   useEffect(() => {
-    if (isClient && user && properties.length) notifyFreshMatches(user, properties);
+    if (isClient && user && properties.length) {
+      void notifyFreshMatches(user, properties).catch((error) => {
+        console.warn('[Selix notifications] Impossible de synchroniser les annonces vues :', error);
+      });
+    }
   }, [isClient, user, properties]);
 
   async function persistProfile(next: Profile) {

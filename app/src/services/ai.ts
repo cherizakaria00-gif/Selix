@@ -301,8 +301,8 @@ export type Needs = {
 function parseAmount(num: string, unit?: string) {
   const n = parseFloat(num.replace(/\s/g, '').replace(',', '.'));
   if (Number.isNaN(n)) return undefined;
-  if (unit && /^(millions?|mdh|m)$/.test(unit)) return n * 1_000_000;
-  if (unit && /^(k|mille)$/.test(unit)) return n * 1_000;
+  if (unit && /^(millions?|mdh|m|مليون|ملايين)$/.test(unit)) return n * 1_000_000;
+  if (unit && /^(k|mille|ألف|آلاف)$/.test(unit)) return n * 1_000;
   return n;
 }
 
@@ -346,7 +346,7 @@ export function parseNeeds(input: string): Needs {
   else if (tf) needs.bedroomsMin = +tf[1] - 1;
 
   // Montants : « 2 millions », « 12 000 dh », « 15k », « 1,5 m », « entre 8000 et 12000 »
-  const amountRe = /(\d+(?:[ .]\d{3})*(?:,\d+)?)\s*(millions?|mdh|m(?![2²a-z])|k(?![a-z])|mille)?/g;
+  const amountRe = /(\d+(?:[ .]\d{3})*(?:,\d+)?)\s*(millions?|mdh|m(?![2²a-z])|k(?![a-z])|mille|مليون|ملايين)?/g;
   const amounts: { value: number; index: number }[] = [];
   for (const m of t.matchAll(amountRe)) {
     const after = t.slice((m.index ?? 0) + m[0].length, (m.index ?? 0) + m[0].length + 10);
@@ -473,9 +473,12 @@ export async function askAssistant(input: AssistantInput): Promise<AssistantOutp
   if (API_URL) {
     try {
       return await askRemote(input);
-    } catch {
+    } catch (error) {
       // Hors ligne ou serveur indisponible : le moteur local prend le relais.
+      console.warn('[Selix assistant] API /chat indisponible ; repli sur le moteur local :', error);
     }
+  } else {
+    console.warn('[Selix assistant] EXPO_PUBLIC_SELIX_API_URL est vide ; utilisation du moteur local.');
   }
   return askLocal(input);
 }

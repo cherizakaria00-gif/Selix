@@ -1,0 +1,2 @@
+# Point d'entrée conservé pour les commandes lancées depuis api/.
+-r asr/requirements.txt

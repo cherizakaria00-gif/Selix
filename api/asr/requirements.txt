@@ -1,0 +1,27 @@
+# Python 3.12 recommandé sur Linux et Windows.
+# API HTTP et réception des fichiers multipart.
+fastapi>=0.115,<1
+uvicorn[standard]>=0.30,<1
+python-multipart>=0.0.18,<1
+
+# Décodage, tableaux et traitement audio.
+numpy>=1.26,<3
+av>=11,<20
+librosa>=0.10.2,<2
+
+# Inférence des poids CTranslate2 locaux.
+ctranslate2>=4.9,<5
+faster-whisper==1.2.1
+
+# Silero VAD chargé avec torch.hub ; packaging est importé par ses utilitaires.
+torch>=2.5,<3
+packaging>=24,<27
+
+# Conservé pour convertir les modèles Hugging Face et exporter leur tokenizer.
+# Le serveur faster-whisper ne charge plus de pipeline Transformers.
+# transformers>=4.48,<6
+
+huggingface_hub
+
+# pip installe automatiquement les dépendances transitives de ces bibliothèques.
+

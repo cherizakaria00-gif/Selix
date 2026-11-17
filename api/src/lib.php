@@ -18,7 +18,7 @@ function config(?string $key = null): mixed
 {
     static $config = null;
     if ($config === null) {
-        $file = getenv('SELIX_CONFIG') ?: dirname(__DIR__) . '/config.php';
+        $file = getenv('SELIX_CONFIG') ?: dirname(__DIR__) . '/config.env.php';
         if (!is_file($file)) throw new HttpError(500, 'config.php manquant sur le serveur.');
         $config = require $file;
     }
