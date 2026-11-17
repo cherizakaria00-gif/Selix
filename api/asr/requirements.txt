@@ -19,7 +19,7 @@ packaging>=24,<27
 
 # Conservé pour convertir les modèles Hugging Face et exporter leur tokenizer.
 # Le serveur faster-whisper ne charge plus de pipeline Transformers.
-transformers>=4.48,<6
+# transformers>=4.48,<6
 
 huggingface_hub
 
