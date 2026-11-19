@@ -9,7 +9,6 @@ import {
   useAudioPlayerStatus,
 } from 'expo-audio';
 import { useRef, useState } from 'react';
-import { useLocalSearchParams } from 'expo-router';
 import {
   ActivityIndicator,
   FlatList,
@@ -114,10 +113,6 @@ function AudioPlayback({ uri }: { uri: string }) {
 
 export default function Assistant() {
   const { user, chat, sendMessage, sendAudioMessage, thinking, properties, profile, score } = useApp();
-  const { profileEdit } = useLocalSearchParams<{ profileEdit?: string }>();
-  const profileEditMode = profileEdit === '1';
-  // Le premier message après le bouton est maintenant forcé côté serveur ; les suivants sont classifiés normalement.
-  const forceFirstProfileEdit = useRef(profileEditMode);
   const [text, setText] = useState('');
   const recorder = useAudioRecorder({ ...RecordingPresets.HIGH_QUALITY, isMeteringEnabled: true, directory: 'document' });
   const recorderState = useAudioRecorderState(recorder, 100);
@@ -163,9 +158,7 @@ export default function Assistant() {
         await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
         setText('');
         Keyboard.dismiss();
-        const forceProfileEdit = forceFirstProfileEdit.current;
-        await sendAudioMessage(uri, profileEditMode, forceProfileEdit);
-        if (forceProfileEdit) forceFirstProfileEdit.current = false;
+        await sendAudioMessage(uri);
       } catch (error) {
         setAudioMessage(error instanceof Error ? error.message : 'Impossible de traiter cet enregistrement.');
         await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true }).catch(() => undefined);
@@ -178,9 +171,7 @@ export default function Assistant() {
     if (!value.trim()) return;
     setText('');
     Keyboard.dismiss();
-    const forceProfileEdit = forceFirstProfileEdit.current;
-    await sendMessage(value.trim(), profileEditMode, forceProfileEdit);
-    if (forceProfileEdit) forceFirstProfileEdit.current = false;
+    await sendMessage(value.trim());
   }
 
   async function toggleAudioRecording() {

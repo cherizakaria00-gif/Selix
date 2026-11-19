@@ -3,10 +3,10 @@
  * POST /chat — assistant Selix propulsé par Claude.
  *
  * Contrat (voir askRemote() dans app/src/services/ai.ts) :
- *   requête : { message, history: [{ role, text }], profile, candidates: [{ id, score, title, ... }] }
- *   réponse : { reply, propertyIds, needs? }
+ *   requête : { message, history: [{ role, text }], position? }
+ *   réponse : { reply, propertyIds, category, conversationContext, profile? }
  *
- * Pour les recommandations, l'app pré-classe les biens et envoie les meilleurs candidats.
+ * Pour les recommandations, le serveur classe les biens selon le profil enregistré.
  * Pour une exploration de type, le serveur charge les annonces correspondantes depuis la base.
  */
 
@@ -31,13 +31,14 @@ Règles :
 - Si aucun candidat ne convient vraiment, dis-le honnêtement, laisse propertyIds vide et pose une question utile (budget, ville, type, nombre de chambres…).
 - Respecte le budget annoncé par le client. Ne lui demande jamais de l'augmenter, de le dépasser ou de faire un effort financier, même pour inclure un bien précis. N'emploie pas de formulations comme « pouvez-vous augmenter votre budget ? » ou « wach ntl3o lmizania l 7.2 milion bach tdkhel Villa Souissi ? ».
 - Si les biens disponibles dépassent son budget, indique simplement qu'aucun bien ne correspond dans cette limite. Propose, sans insistance, d'explorer une autre ville, un autre quartier, une surface, un type ou des équipements différents en conservant le même budget. Tu peux demander le budget s'il n'a pas encore été précisé ; s'il est déjà connu, ne le redemande pas dans le but de le revoir à la hausse.
-- Une hausse du budget doit venir spontanément du client. Ne déduis jamais un nouveau budget du prix d'une annonce et ne renseigne jamais un budget supérieur dans needs sans demande explicite du client. Les règles du mode profile_edit continuent de s'appliquer à toute modification du profil.
+- Une hausse du budget doit venir spontanément du client. Ne déduis jamais un nouveau budget du prix d'une annonce. Les règles du mode profile_edit continuent de s'appliquer à toute modification du profil.
 - S'il manque une information essentielle (location ou achat, ville, budget), pose UNE question à la fois. Cette règle ne s'applique pas avant l'affichage des biens en mode type_exploration.
-- needs : uniquement ce que le client vient d'exprimer ou de modifier dans son dernier message (laisse vide ce qu'il n'a pas dit). Villes et quartiers avec l'orthographe des données Selix (ex. Casablanca, Marrakech, Dar Bouazza, Maârif). Budget en MAD : loyer mensuel pour une location, prix total pour un achat (« 2 millions » = 2000000, « 15k » = 15000).
+- Le serveur a déjà extrait les critères et fixé leur destination. Utilise criteresActifs et profileChanges tels quels : ne réinterprète pas une recherche temporaire comme une modification du profil. Ne dis « enregistré dans votre profil » que si allowProfileUpdate=true. Les critères temporaires restent en dehors du profil, des recommandations personnalisées et des notifications.
 - Le profil fourni est le profil unique du client : il réunit ses critères actuels, les préférences apprises par les swipes et l'affinement des échanges avec l'IA.
 - Si <contexte> indique queryMode="type_exploration", cette règle est prioritaire : dès qu'il y a au moins un candidat, sélectionne et présente jusqu'à 3 candidats chargés par le serveur, même si la transaction, la ville ou le budget ne sont pas précisés. Ne dis pas qu'il n'y a aucun bien si <candidats> en contient. Après les avoir présentés, demande un critère à préciser (achat/location, ville ou budget). Ces biens correspondent au type et uniquement aux critères de la demande actuelle. Ne modifie pas le profil enregistré.
 - En mode type_exploration, le serveur transmet toutes les annonces correspondantes de la base, pas uniquement les suggestions classées de l'application.
-- Le profil n'est modifié que lorsque <contexte> indique queryMode="profile_edit". En mode "chat", réponds normalement sans modifier le profil enregistré.
+- Le profil n'est modifié que lorsque <contexte> indique queryMode="profile_edit" et allowProfileUpdate=true. En mode "chat", réponds normalement sans modifier le profil enregistré. Une réponse telle que « achat » à ta question sur les villas affine les villas temporaires, même si un ancien échange portait sur le profil. Ne demande pas de confirmer la destination des critères.
+- questionField décrit la seule précision demandée à la fin de reply : transaction, cities, districts, types, budget, bedroomsMin, mustHave ou other. Utilise none si tu ne poses aucune question. Le serveur rattache cette question au mode courant pour interpréter la prochaine réponse.
 - Si les candidats ne correspondent pas, dis-le clairement et demande quel critère l'utilisateur souhaite préciser.
 - Pour une visite, un appel ou une négociation, explique qu'un conseiller Selix le recontacte, ou qu'il peut demander une visite depuis la fiche du bien.
 TXT;
@@ -52,94 +53,22 @@ function chat_distance_km(float $lat1, float $lon1, float $lat2, float $lon2): f
     return 6371 * 2 * asin(sqrt($a));
 }
 
-/** Ne garde que les critères explicitement transmis pour la requête courante, jamais le profil sauvegardé. */
-function chat_explicit_query_criteria(mixed $input, string $message = ''): array
-{
-    if (!is_array($input)) $input = [];
-    $criteria = [];
-    if (in_array($input['transaction'] ?? null, ['location', 'achat'], true)) {
-        $criteria['transaction'] = $input['transaction'];
-    } elseif (preg_match('/الكراء|كراء|نكري/u', $message)) {
-        $criteria['transaction'] = 'location';
-    } elseif (preg_match('/الشراء|شراء|للبيع|نشري/u', $message)) {
-        $criteria['transaction'] = 'achat';
-    }
-    foreach (['cities', 'districts', 'mustHave'] as $field) {
-        $values = $input[$field] ?? [];
-        if (is_array($values)) {
-            $criteria[$field] = array_values(array_filter($values, 'is_string'));
-        }
-    }
-    foreach (['budgetMin', 'budgetMax', 'bedroomsMin'] as $field) {
-        if (isset($input[$field]) && is_numeric($input[$field])) {
-            $criteria[$field] = $field === 'bedroomsMin' ? (int) $input[$field] : (float) $input[$field];
-        }
-    }
-    return $criteria;
-}
-
-/** Détection de secours pour les formulations darija sans ambiguïté, après la classification LLM. */
-function chat_explicit_exploration_type(string $message): ?string
-{
-    $text = mb_strtolower($message);
-    $types = [
-        'appartement' => '/\b(?:l?appart(?:ement)?s?|appartements?|ch9a|ch9at)\b|شقق|شقة|بارطما/u',
-        'villa' => '/\b(?:l?vilat|l?villat|l?villas?|villas?)\b|الفيلات|فيلات|فيلا|فلل/u',
-        'studio' => '/\b(?:l?studios?|l?studyo)\b|استوديو|ستوديو/u',
-        'riad' => '/\b(?:l?riads?|l?ryad)\b|الرياض|رياض/u',
-        'bureau' => '/\b(?:l?bureaux?|l?buro(?:uat)?|bureaux?)\b|المكاتب|مكاتب|مكتب/u',
-        'terrain' => '/\b(?:l?terrains?|l?ard|l?aradi)\b|الأراضي|اراضي|أرض|ارض/u',
-    ];
-    $type = null;
-    foreach ($types as $candidate => $pattern) {
-        if (preg_match($pattern, $text)) {
-            $type = $candidate;
-            break;
-        }
-    }
-    if ($type === null) return null;
-
-    $asksToSeeListings = preg_match('/\b(?:nchouf|nchof|nchoof|chouf|chof|voir|montre|montrez|affiche|show|disponible|existent|kayn|kaynin)\b|شنو\s+كاين|وريني|بغيت\s+نشوف/u', $text)
-        || preg_match('/\b(?:w|ou|et)\s+l?(?:vilat|villas?|buro(?:uat)?|bureaux?|studios?|riads?|terrains?|appart(?:ement)?s?)\b/u', $text);
-    return $asksToSeeListings ? $type : null;
-}
-
-/** Continues a type exploration when the user answers the assistant's request for search criteria. */
-function chat_exploration_followup_type(array $history, array $currentCriteria): ?string
-{
-    $hasCriteria = !empty($currentCriteria['transaction'])
-        || !empty($currentCriteria['cities']) || !empty($currentCriteria['districts'])
-        || !empty($currentCriteria['mustHave']) || isset($currentCriteria['budgetMin'])
-        || isset($currentCriteria['budgetMax']) || isset($currentCriteria['bedroomsMin']);
-    if (!$hasCriteria) return null;
-
-    $recent = array_slice($history, -8);
-    for ($i = count($recent) - 1; $i >= 0; $i--) {
-        if (($recent[$i]['role'] ?? '') !== 'assistant') continue;
-        $assistantText = (string) ($recent[$i]['text'] ?? '');
-        $askedToRefine = preg_match('/[?؟]|location|achat|acheter|louer|ville|budget|crit[eè]re|الكراء|الشراء|مدينة|الثمن|الميزانية/iu', $assistantText);
-        if (!$askedToRefine) return null;
-        for ($j = $i - 1; $j >= 0; $j--) {
-            if (($recent[$j]['role'] ?? '') !== 'user') continue;
-            $previousType = chat_explicit_exploration_type((string) ($recent[$j]['text'] ?? ''));
-            if ($previousType !== null) return $previousType;
-        }
-        return null;
-    }
-    return null;
-}
-
 /** Charge toutes les annonces visibles qui correspondent au type et aux critères de cette requête. */
-function chat_candidates_by_type(string $type, array $user, array $profile, ?array $position, bool $nearMe): array
+function chat_candidates_for_search(array $user, array $profile, ?array $position, bool $nearMe, ?array $scoringProfile = null): array
 {
+    $types = $profile['types'] ?? [];
     $driver = db()->getAttribute(PDO::ATTR_DRIVER_NAME);
-    $sql = match ($driver) {
-        'sqlite' => "SELECT data FROM selix_properties WHERE json_extract(data, '$.type') = ? ORDER BY created_at DESC",
-        'mysql' => "SELECT data FROM selix_properties WHERE JSON_UNQUOTE(JSON_EXTRACT(data, '$.type')) = ? ORDER BY created_at DESC",
-        default => 'SELECT data FROM selix_properties ORDER BY created_at DESC',
-    };
-
-    $rows = q($sql, $driver === 'sqlite' || $driver === 'mysql' ? [$type] : [])->fetchAll(PDO::FETCH_COLUMN);
+    $sql = 'SELECT data FROM selix_properties';
+    $parameters = [];
+    if ($types && in_array($driver, ['sqlite', 'mysql'], true)) {
+        $expression = $driver === 'sqlite' ? "json_extract(data, '$.type')" : "JSON_UNQUOTE(JSON_EXTRACT(data, '$.type'))";
+        $sql .= ' WHERE ' . $expression . ' IN (' . implode(',', array_fill(0, count($types), '?')) . ')';
+        $parameters = $types;
+    }
+    $rows = q($sql . ' ORDER BY created_at DESC', $parameters)->fetchAll(PDO::FETCH_COLUMN);
+    $disliked = $scoringProfile === null ? [] : array_flip(q(
+        "SELECT property_id FROM selix_swipes WHERE user_id = ? AND action = 'dislike'", [$user['id']],
+    )->fetchAll(PDO::FETCH_COLUMN));
     $cities = is_array($profile['cities'] ?? null) ? $profile['cities'] : [];
     $districts = is_array($profile['districts'] ?? null) ? $profile['districts'] : [];
     $features = is_array($profile['mustHave'] ?? null) ? $profile['mustHave'] : [];
@@ -160,7 +89,7 @@ function chat_candidates_by_type(string $type, array $user, array $profile, ?arr
 
     foreach ($rows as $json) {
         $property = json_decode((string) $json, true);
-        if (!is_array($property) || ($property['type'] ?? null) !== $type) continue;
+        if (!is_array($property) || ($types && !in_array($property['type'] ?? null, $types, true))) continue;
         $filterCounts['typeMatched']++;
         if (($property['status'] ?? null) !== 'disponible') continue;
         $filterCounts['available']++;
@@ -211,7 +140,7 @@ function chat_candidates_by_type(string $type, array $user, array $profile, ?arr
         $candidates[] = [
             'id' => (string) ($property['id'] ?? ''),
             'title' => (string) ($property['title'] ?? ''),
-            'score' => score_property($profile, $property),
+            'score' => score_property($scoringProfile ?? $profile, $property) - (isset($disliked[$property['id'] ?? '']) ? 100 : 0),
             'transaction' => (string) ($property['transaction'] ?? ''),
             'type' => (string) ($property['type'] ?? ''),
             'city' => (string) ($property['city'] ?? ''),
@@ -224,15 +153,15 @@ function chat_candidates_by_type(string $type, array $user, array $profile, ?arr
         $filterCounts['included']++;
     }
 
-    error_log('[Selix exploration filters] type=' . $type . ' role=' . (string) ($user['role'] ?? 'user')
+    error_log('[Selix exploration filters] type=' . implode(',', $types) . ' role=' . (string) ($user['role'] ?? 'user')
         . ' nearMe=' . ($nearMe ? '1' : '0') . ' ' . (json_encode($filterCounts) ?: '{}'));
 
     usort($candidates, static fn(array $a, array $b): int => $b['score'] <=> $a['score']);
     return $candidates;
 }
 
-/** Le modèle décide si le message demande une exploration du catalogue et identifie son type. */
-function chat_classify_intent(Client $client, string $message, array $history, bool $profileEditRequested): array
+/** Classe le tour dans les trois catégories et extrait uniquement les critères du message actuel. */
+function chat_classify_turn(Client $client, string $message, array $history, array $conversationContext): array
 {
     $messages = [];
     foreach (array_slice($history, -6) as $item) {
@@ -243,6 +172,8 @@ function chat_classify_intent(Client $client, string $message, array $history, b
             $messages[] = ['role' => $role, 'content' => $text];
         }
     }
+    $message = '<etat_conversation>' . json_encode($conversationContext, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)
+        . "</etat_conversation>\n\nMessage actuel : " . $message;
     $lastRole = $messages ? $messages[count($messages) - 1]['role'] : null;
     if ($lastRole !== 'user') {
         $messages[] = ['role' => 'user', 'content' => $message];
@@ -253,19 +184,29 @@ function chat_classify_intent(Client $client, string $message, array $history, b
     $schema = [
         'type' => 'object',
         'properties' => [
-            'intent' => ['type' => 'string', 'enum' => ['exploration', 'chat', 'profile_edit']],
-            'propertyType' => ['type' => 'string', 'enum' => ['appartement', 'villa', 'studio', 'riad', 'bureau', 'terrain', 'none']],
+            'category' => ['type' => 'string', 'enum' => ['GENERAL_SEARCH', 'PROFILE_UPDATE', 'CONTINUATION']],
+            'explicitProfileUpdate' => ['type' => 'boolean'],
+            'criteria' => chat_criteria_schema(),
         ],
-        'required' => ['intent', 'propertyType'],
+        'required' => ['category', 'explicitProfileUpdate', 'criteria'],
         'additionalProperties' => false,
     ];
-    $modeInstruction = $profileEditRequested
-        ? 'Le client vient de cliquer sur « Modifier avec l’assistant ». Dans ce parcours, choisis profile_edit par défaut lorsqu’il exprime ou modifie ce qu’il veut rechercher, y compris « je veux chercher des appartements et des studios », « je cherche une villa » ou « bghit n9elleb 3la appartement ». Le simple fait de nommer un type de bien ou d’employer « chercher » ne signifie jamais exploration. Choisis exploration uniquement si le dernier message demande clairement à voir les annonces du catalogue ou ce qui existe/disponible, par exemple « quelles villas sont disponibles ? », « montre-moi les appartements », « w lvilat ». Dans ce cas, n’applique pas les critères du profil. Sinon, garde profile_edit.'
-        : 'Classe exploration si le dernier message demande clairement à voir les annonces disponibles ou ce qui existe dans le catalogue; sinon classe chat.';
+    $instructions = <<<'TXT'
+Tu classes le dernier message immobilier Selix avec l'état fourni par le serveur. Comprends français, anglais, espagnol, arabe et darija (y compris Arabizi).
+GENERAL_SEARCH : nouvelle exploration du catalogue, nouveau type ou nouvelle recherche indépendante. Exemples : « et les villas ? », « w lvilat », « quels bureaux sont disponibles ? ». Les critères sont temporaires. Une simple précision de la recherche active n'est PAS une nouvelle recherche.
+PROFILE_UPDATE : modification de préférences durables, lorsque le client est dans mode=profile_edit, ou qu'il demande EXPLICITEMENT de mémoriser/enregistrer/changer son profil. « Désormais je veux seulement acheter », « retiens que mon budget est... » sont explicites. Mentionner « achat », « mon budget est... » ou « je veux... » pendant une recherche temporaire ne constitue PAS une demande durable.
+CONTINUATION : réponse à lastQuestion, précision/correction de la recherche active, demande sur un bien proposé ou conversation générale. La destination reste celle de lastQuestion.target, sinon du mode actif. « Achat » après une question achat/location concernant les villas est CONTINUATION, criteria.transaction=achat, explicitProfileUpdate=false. « Rabat », « avec piscine », « 6 millions » après une question correspondante suivent la même règle. Une phrase courte n'exige pas de confirmation.
+En mode=profile_edit, les changements de critères complètent le profil, MAIS une nouvelle exploration explicite ouvre GENERAL_SEARCH. Si forceNextProfileEdit=true, le prochain message appartient au profil, même s'il nomme un nouveau type.
+En cas d'ambiguïté entre profil durable et recherche temporaire, choisis CONTINUATION si une exploration est active, sinon GENERAL_SEARCH. Ne demande aucune confirmation de destination.
+criteria ne contient QUE les champs explicitement exprimés, corrigés ou supprimés par le message actuel. N'y recopie jamais tous les critères de l'historique ni du profil. Les réponses elliptiques utilisent le champ de lastQuestion.field. Les valeurs de temporaryCriteria déjà acquises sont fusionnées par le serveur. Ne déduis jamais achat/location d'un montant. « 6 millions de dirhams »=6000000 MAD ; si l'unité dirhams/centimes est ambiguë, n'invente pas la conversion.
+Valeurs canoniques : transaction=achat|location ; types=appartement|villa|studio|riad|bureau|terrain ; villes/quartiers avec l'orthographe du catalogue (Casablanca, Marrakech, Rabat, Maârif...). mustHave utilise piscine, jardin, parking, meublé, vue mer, terrasse, ascenseur, sécurité, climatisation, balcon. Supprimer un filtre numérique/transaction = null ; supprimer une liste = []. Les champs non mentionnés sont ABSENTS, pas vides ni null. Une négation doit être comprise, pas inversée : « pas besoin de piscine » retire cette exigence, « pas de piscine » n'impose pas piscine. nearMe est seulement true/false si demandé ou annulé explicitement.
+explicitProfileUpdate est true uniquement si le dernier message demande explicitement une modification durable ; le mode profil seul ne le rend pas true. Pour les salutations et les questions sans critère, criteria={}.
+mustHave ajoute les équipements exprimés aux exigences actives ; [] efface toutes ces exigences. Pour retirer seulement un équipement, utilise removeMustHave : « pas besoin de piscine » donne removeMustHave=["piscine"], sans supprimer les autres équipements.
+TXT;
     $res = $client->beta->messages->create(
         model: CHAT_MODEL,
-        maxTokens: 300,
-        system: 'Classifie le dernier message d’un client immobilier Selix. ' . $modeInstruction . ' Utilise le contexte récent pour comprendre les messages elliptiques, mais donne priorité à l’intention explicite du dernier message et aux règles du parcours en cours. Une demande d’exploration porte sur les annonces disponibles dans le catalogue; une intention de chercher ou de définir ses critères dans le parcours de modification est profile_edit. propertyType doit être le type demandé explicitement ou compris dans le contexte; sinon none. En dehors du parcours de modification, réponds chat pour les salutations, questions générales et demandes de visite. Les exemples ne sont pas exhaustifs.',
+        maxTokens: 1200,
+        system: $instructions,
         messages: $messages,
         outputConfig: ['effort' => 'low', 'format' => ['type' => 'json_schema', 'schema' => $schema]],
         fallbacks: 'default',
@@ -278,7 +219,7 @@ function chat_classify_intent(Client $client, string $message, array $history, b
             break;
         }
     }
-    return ['intent' => 'chat', 'propertyType' => 'none'];
+    throw new HttpError(502, 'Classification de conversation invalide.');
 }
 
 function chat_schema(): array
@@ -290,22 +231,9 @@ function chat_schema(): array
             'reply' => ['type' => 'string'],
             'replyLanguage' => ['type' => 'string', 'enum' => ['fr', 'en', 'ar', 'es']],
             'propertyIds' => $strings,
-            'needs' => [
-                'type' => 'object',
-                'properties' => [
-                    'transaction' => ['type' => 'string', 'enum' => ['location', 'achat']],
-                    'cities' => $strings,
-                    'districts' => $strings,
-                    'types' => ['type' => 'array', 'items' => ['type' => 'string', 'enum' => ['appartement', 'villa', 'studio', 'riad', 'bureau', 'terrain']]],
-                    'budgetMin' => ['type' => 'number'],
-                    'budgetMax' => ['type' => 'number'],
-                    'bedroomsMin' => ['type' => 'integer'],
-                    'mustHave' => $strings,
-                ],
-                'additionalProperties' => false,
-            ],
+            'questionField' => ['type' => 'string', 'enum' => ['none', 'transaction', 'cities', 'districts', 'types', 'budget', 'bedroomsMin', 'mustHave', 'other']],
         ],
-        'required' => ['reply', 'replyLanguage', 'propertyIds', 'needs'],
+        'required' => ['reply', 'replyLanguage', 'propertyIds', 'questionField'],
         'additionalProperties' => false,
     ];
 }
@@ -320,58 +248,34 @@ function handle_chat(array $user): array
     $message = trim((string) ($in['message'] ?? ''));
     if ($message === '' || mb_strlen($message) > 2000) throw new HttpError(400, 'Message vide ou trop long.');
     $client = new Client(apiKey: $key, baseUrl: config('anthropic_base_url') ?: 'https://api.anthropic.com');
-    $profileEditRequested = ($in['conversationMode'] ?? '') === 'profile_edit';
-    $forceProfileEdit = $profileEditRequested && !empty($in['forceProfileEdit']);
+    $conversationContext = chat_load_context((string) $user['id']);
     try {
-        $intent = $forceProfileEdit
-            ? ['intent' => 'profile_edit', 'propertyType' => 'none']
-            : chat_classify_intent(
-                $client,
-                $message,
-                is_array($in['history'] ?? null) ? $in['history'] : [],
-                $profileEditRequested,
-            );
+        $classification = chat_classify_turn(
+            $client, $message, is_array($in['history'] ?? null) ? $in['history'] : [], $conversationContext,
+        );
     } catch (APIException $e) {
         error_log('Selix intent classification: ' . $e->getMessage());
         throw new HttpError(502, 'Impossible de déterminer le type de demande.');
     }
-    $queryProfile = chat_explicit_query_criteria($in['queryCriteria'] ?? null, $message);
-    $type = (string) ($intent['propertyType'] ?? 'none');
-    // Si le classifieur manque une demande darija explicite, son intention reste corrigée par ce signal sûr.
-    $explicitExplorationType = chat_explicit_exploration_type($message);
-    if (!$forceProfileEdit && $explicitExplorationType !== null) {
-        $intent['intent'] = 'exploration';
-        $intent['propertyType'] = $explicitExplorationType;
-        $type = $explicitExplorationType;
-    } elseif (!$forceProfileEdit) {
-        $followupType = chat_exploration_followup_type(
-            is_array($in['history'] ?? null) ? $in['history'] : [],
-            $queryProfile,
-        );
-        if ($followupType !== null) {
-            $intent['intent'] = 'exploration';
-            $intent['propertyType'] = $followupType;
-            $type = $followupType;
-        }
-    }
-    $typeExploration = ($intent['intent'] ?? '') === 'exploration'
-        && in_array($type, PROPERTY_TYPES, true);
-    $effectiveMode = $typeExploration
-        ? 'type_exploration'
-        : (($intent['intent'] ?? '') === 'profile_edit' ? 'profile_edit' : 'chat');
-    // queryProfile ne contient que des critères explicitement déclarés pour le tour actuel.
+    $turn = chat_resolve_turn($conversationContext, $classification);
+    $conversationContext = $turn['context'];
+    $typeExploration = $conversationContext['mode'] === 'general_search';
+    $effectiveMode = $typeExploration ? 'type_exploration' : $conversationContext['mode'];
+    $savedJson = q('SELECT data FROM selix_docs WHERE user_id = ? AND kind = ?', [$user['id'], 'profile'])->fetchColumn();
+    $savedProfile = $savedJson ? json_decode((string) $savedJson, true) : [];
+    if (!is_array($savedProfile)) $savedProfile = [];
+    $queryProfile = $typeExploration ? $turn['criteria'] : $savedProfile;
+    if ($turn['allowProfileUpdate']) $queryProfile = chat_merge_criteria($savedProfile, $turn['profilePatch']);
+    $position = is_array($in['position'] ?? null) ? $in['position'] : null;
     if ($typeExploration) {
-        // Le type vient du classifieur IA; les autres critères sont ceux exprimés dans le message courant.
-        $queryProfile['types'] = [$type];
-        $position = is_array($in['position'] ?? null) ? $in['position'] : null;
-        $candidates = chat_candidates_by_type($type, $user, $queryProfile, $position, !empty($in['nearMe']));
+        $candidates = chat_candidates_for_search($user, $queryProfile, $position, !empty($queryProfile['nearMe']));
     } else {
-        $candidates = array_slice(is_array($in['candidates'] ?? null) ? $in['candidates'] : [], 0, 20);
+        $candidates = array_slice(chat_candidates_for_search($user, [], $position, false, $queryProfile), 0, 15);
     }
     error_log('[Selix chat intent] user=' . (string) $user['id']
-        . ' intent=' . (string) ($intent['intent'] ?? 'chat')
-        . ' type=' . $type
+        . ' category=' . $turn['category']
         . ' mode=' . $effectiveMode
+        . ' profileWrite=' . ($turn['allowProfileUpdate'] ? '1' : '0')
         . ' candidates=' . count($candidates));
 
     // Trace terminal pour contrôler les biens effectivement transmis au modèle, sans journaliser le profil ni l'audio.
@@ -388,7 +292,7 @@ function handle_chat(array $user): array
 
     // Historique : alternance user/assistant commençant par user, 10 derniers messages.
     $messages = [];
-    $replyHistory = $typeExploration ? [] : (is_array($in['history'] ?? null) ? $in['history'] : []);
+    $replyHistory = is_array($in['history'] ?? null) ? $in['history'] : [];
     foreach (array_slice($replyHistory, -10) as $m) {
         $role = ($m['role'] ?? '') === 'assistant' ? 'assistant' : 'user';
         $text = mb_substr(trim((string) ($m['text'] ?? '')), 0, 2000);
@@ -396,7 +300,12 @@ function handle_chat(array $user): array
         $messages[] = ['role' => $role, 'content' => $text];
     }
     $context = json_encode([
-        'profil' => $typeExploration ? $queryProfile : ($in['profile'] ?? null),
+        'criteresActifs' => $queryProfile,
+        'profil' => $typeExploration ? null : $queryProfile,
+        'conversationContext' => $conversationContext,
+        'category' => $turn['category'],
+        'allowProfileUpdate' => $turn['allowProfileUpdate'],
+        'profileChanges' => $turn['allowProfileUpdate'] ? $turn['profilePatch'] : null,
         'candidats' => $candidates,
         'queryMode' => $effectiveMode,
         'nombreCandidats' => count($candidates),
@@ -441,22 +350,46 @@ function handle_chat(array $user): array
         )), 0, 3);
     }
     $reply = $data['reply'];
+    $questionField = (string) ($data['questionField'] ?? 'none');
     if ($typeExploration && $ids && empty($data['propertyIds'])) {
         // Le LLM a demandé une précision avant de choisir des IDs; affiche d'abord les biens trouvés.
+        $questionField = empty($queryProfile['transaction']) ? 'transaction' : (empty($queryProfile['cities']) ? 'cities' : 'none');
         $explorationReplies = [
             'fr' => 'Voici quelques biens disponibles. Vous préférez acheter ou louer ?',
             'en' => 'Here are some available properties. Would you prefer to buy or rent?',
             'ar' => 'هذه بعض العقارات المتاحة. هل تفضل الشراء أم الكراء؟',
             'es' => 'Estos son algunos inmuebles disponibles. ¿Prefieres comprar o alquilar?',
         ];
+        if ($questionField === 'cities') {
+            $explorationReplies = [
+                'fr' => 'Voici quelques biens disponibles. Dans quelle ville souhaitez-vous chercher ?',
+                'en' => 'Here are some available properties. Which city would you like to search in?',
+                'ar' => 'هذه بعض العقارات المتاحة. في أي مدينة تريد البحث؟',
+                'es' => 'Estos son algunos inmuebles disponibles. ¿En qué ciudad quieres buscar?',
+            ];
+        } elseif ($questionField === 'none') {
+            $explorationReplies = [
+                'fr' => 'Voici quelques biens correspondant à cette recherche.',
+                'en' => 'Here are some properties matching this search.',
+                'ar' => 'هذه بعض العقارات المطابقة لهذا البحث.',
+                'es' => 'Estos son algunos inmuebles que coinciden con esta búsqueda.',
+            ];
+        }
         $reply = $explorationReplies[$data['replyLanguage'] ?? 'fr'] ?? $explorationReplies['fr'];
     }
+    if ($questionField === 'none' && preg_match('/[?؟]/u', $reply)) $questionField = 'other';
+    $committed = chat_commit_turn((string) $user['id'], $turn, $reply, $questionField);
     $out = [
         'reply' => $reply,
         'propertyIds' => array_slice($ids, 0, 3),
-        'intent' => $typeExploration ? 'exploration' : (($intent['intent'] ?? '') === 'profile_edit' ? 'profile_edit' : 'chat'),
+        'intent' => $typeExploration ? 'exploration' : ($effectiveMode === 'profile_edit' ? 'profile_edit' : 'chat'),
+        'category' => $turn['category'],
+        'allowProfileUpdate' => $turn['allowProfileUpdate'],
+        'conversationContext' => $committed['conversationContext'],
     ];
-    $needs = array_filter($data['needs'] ?? [], fn($v) => $v !== null && $v !== [] && $v !== '');
-    if ($needs) $out['needs'] = $needs;
+    if ($turn['allowProfileUpdate']) {
+        $out['needs'] = $turn['profilePatch'];
+        $out['profile'] = $committed['profile'];
+    }
     return $out;
 }

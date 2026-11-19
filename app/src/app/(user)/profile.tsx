@@ -13,9 +13,10 @@ import { confirmAction, notify, openPrivacyPolicy } from '@/utils/platform';
 const RADII = [0.5, 1, 2, 5, 10];
 
 export default function Profile() {
-  const { user, profile, updateProfile, logout, deleteAccount, locationGranted, enableLocation, enableBackgroundLocation, backgroundStatus, likedIds, dislikedIds } =
+  const { user, profile, updateProfile, beginProfileEditing, thinking, logout, deleteAccount, locationGranted, enableLocation, enableBackgroundLocation, backgroundStatus, likedIds, dislikedIds } =
     useApp();
   const [deleting, setDeleting] = useState(false);
+  const [openingAssistant, setOpeningAssistant] = useState(false);
   const l = profile.learned;
   const topOf = (rec: Record<string, number>) =>
     Object.entries(rec)
@@ -61,6 +62,19 @@ export default function Profile() {
     } catch (e) {
       setDeleting(false);
       notify('Suppression impossible', e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function editWithAssistant() {
+    if (openingAssistant || thinking) return;
+    setOpeningAssistant(true);
+    try {
+      await beginProfileEditing();
+      router.push('/assistant');
+    } catch (error) {
+      notify('Assistant indisponible', error instanceof Error ? error.message : String(error));
+    } finally {
+      setOpeningAssistant(false);
     }
   }
 
@@ -148,7 +162,8 @@ export default function Profile() {
             icon="sparkles"
             variant="ghost"
             style={{ marginTop: 14 }}
-            onPress={() => router.push('/assistant?profileEdit=1')}
+            disabled={openingAssistant || thinking}
+            onPress={editWithAssistant}
           />
         </Card>
 
