@@ -55,11 +55,7 @@ function chat_normalize_criteria(mixed $input): array
 /** Fusionne uniquement les champs exprimés ; aucune préférence enregistrée n'est ajoutée à une exploration. */
 function chat_merge_criteria(array $base, array $patch): array
 {
-    if (array_key_exists('transaction', $patch) && ($base['transaction'] ?? null) !== $patch['transaction']) {
-        unset($base['budgetMin'], $base['budgetMax']);
-    }
     if (array_key_exists('cities', $patch) && !array_key_exists('districts', $patch)) unset($base['districts']);
-    if (array_key_exists('budgetMax', $patch) && !array_key_exists('budgetMin', $patch)) unset($base['budgetMin']);
     foreach ($patch as $field => $value) {
         if ($field === 'removeMustHave') continue;
         if ($value === null) unset($base[$field]);
@@ -70,6 +66,28 @@ function chat_merge_criteria(array $base, array $patch): array
         $base['mustHave'] = array_values(array_diff($base['mustHave'] ?? [], $patch['removeMustHave']));
     }
     return $base;
+}
+
+/** Dans une recherche temporaire, un nouveau lieu remplace l'ancien couple ville/quartier. */
+function chat_merge_temporary_criteria(array $base, array $patch): array
+{
+    $normalize = static function (array $values): array {
+        $values = array_map(static fn(string $value): string => mb_strtolower(trim($value)), $values);
+        sort($values);
+        return $values;
+    };
+    $locationChanged = false;
+    foreach (['cities', 'districts'] as $field) {
+        if (!empty($patch[$field]) && $normalize($patch[$field]) !== $normalize($base[$field] ?? [])) {
+            $locationChanged = true;
+        }
+    }
+    if ($locationChanged) {
+        unset($base['cities'], $base['districts']);
+    } elseif (isset($patch['cities']) && !isset($patch['districts']) && isset($base['districts'])) {
+        $patch['districts'] = $base['districts'];
+    }
+    return chat_merge_criteria($base, $patch);
 }
 
 function chat_load_context(string $userId): array
@@ -123,6 +141,13 @@ function chat_resolve_turn(array $context, array $classification): array
         $category = $context['mode'] === 'general_search' ? 'CONTINUATION' : 'GENERAL_SEARCH';
     }
 
+    $currentTypes = $context['temporaryCriteria']['types'] ?? [];
+    $requestedTypes = $patch['types'] ?? [];
+    if ($category === 'CONTINUATION' && $context['mode'] === 'general_search'
+        && $currentTypes && $requestedTypes && array_diff($requestedTypes, $currentTypes)) {
+        $category = 'GENERAL_SEARCH';
+    }
+
     if ($category === 'GENERAL_SEARCH') {
         $context['mode'] = 'general_search';
         $context['temporaryCriteria'] = chat_merge_criteria([], $patch);
@@ -136,7 +161,7 @@ function chat_resolve_turn(array $context, array $classification): array
         if (in_array($target, ['chat', 'general_search', 'profile_edit'], true)) $context['mode'] = $target;
         if ($context['mode'] === 'chat' && $patch) $context['mode'] = 'general_search';
         if ($context['mode'] === 'general_search') {
-            $context['temporaryCriteria'] = chat_merge_criteria($context['temporaryCriteria'], $patch);
+            $context['temporaryCriteria'] = chat_merge_temporary_criteria($context['temporaryCriteria'], $patch);
         }
     }
     $context['lastCategory'] = $category;

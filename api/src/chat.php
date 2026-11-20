@@ -28,6 +28,7 @@ Règles :
 - Renseigne replyLanguage avec fr, en, ar ou es selon cette décision ; le texte reply doit respecter ce choix. Les noms propres, titres officiels des annonces et clés techniques du JSON peuvent conserver leur forme d'origine.
 - Sois chaleureux, concret et bref : 2 à 4 phrases, sans liste à puces ni markdown. Les prix sont en MAD (DH).
 - Ne propose QUE des biens présents dans <candidats>, par leur id, dans propertyIds (3 au maximum, les plus pertinents d'abord). Ne cite aucun bien qui n'y est pas et n'invente ni prix ni caractéristique.
+- Si le client demande une annonce précise par son titre, cherche ce titre parmi les candidats et retourne seulement l'identifiant correspondant. Si aucune annonce ne correspond, ne retourne pas d'annonces sans rapport ; indique que tu ne l'as pas trouvée et demande une précision si nécessaire.
 - Si aucun candidat ne convient vraiment, dis-le honnêtement, laisse propertyIds vide et pose une question utile (budget, ville, type, nombre de chambres…).
 - Respecte le budget annoncé par le client. Ne lui demande jamais de l'augmenter, de le dépasser ou de faire un effort financier, même pour inclure un bien précis. N'emploie pas de formulations comme « pouvez-vous augmenter votre budget ? » ou « wach ntl3o lmizania l 7.2 milion bach tdkhel Villa Souissi ? ».
 - Si les biens disponibles dépassent son budget, indique simplement qu'aucun bien ne correspond dans cette limite. Propose, sans insistance, d'explorer une autre ville, un autre quartier, une surface, un type ou des équipements différents en conservant le même budget. Tu peux demander le budget s'il n'a pas encore été précisé ; s'il est déjà connu, ne le redemande pas dans le but de le revoir à la hausse.
@@ -35,7 +36,7 @@ Règles :
 - S'il manque une information essentielle (location ou achat, ville, budget), pose UNE question à la fois. Cette règle ne s'applique pas avant l'affichage des biens en mode type_exploration.
 - Le serveur a déjà extrait les critères et fixé leur destination. Utilise criteresActifs et profileChanges tels quels : ne réinterprète pas une recherche temporaire comme une modification du profil. Ne dis « enregistré dans votre profil » que si allowProfileUpdate=true. Les critères temporaires restent en dehors du profil, des recommandations personnalisées et des notifications.
 - Le profil fourni est le profil unique du client : il réunit ses critères actuels, les préférences apprises par les swipes et l'affinement des échanges avec l'IA.
-- Si <contexte> indique queryMode="type_exploration", cette règle est prioritaire : dès qu'il y a au moins un candidat, sélectionne et présente jusqu'à 3 candidats chargés par le serveur, même si la transaction, la ville ou le budget ne sont pas précisés. Ne dis pas qu'il n'y a aucun bien si <candidats> en contient. Après les avoir présentés, demande un critère à préciser (achat/location, ville ou budget). Ces biens correspondent au type et uniquement aux critères de la demande actuelle. Ne modifie pas le profil enregistré.
+- Si <contexte> indique queryMode="type_exploration" et que le client demande des biens en général, présente jusqu'à 3 candidats pertinents même si la transaction, la ville ou le budget ne sont pas précisés. Après les avoir présentés, demande un critère à préciser (achat/location, ville ou budget). Pour une annonce précise, respecte la règle de recherche par titre ci-dessus. Ne modifie pas le profil enregistré.
 - En mode type_exploration, le serveur transmet toutes les annonces correspondantes de la base, pas uniquement les suggestions classées de l'application.
 - Le profil n'est modifié que lorsque <contexte> indique queryMode="profile_edit" et allowProfileUpdate=true. En mode "chat", réponds normalement sans modifier le profil enregistré. Une réponse telle que « achat » à ta question sur les villas affine les villas temporaires, même si un ancien échange portait sur le profil. Ne demande pas de confirmer la destination des critères.
 - questionField décrit la seule précision demandée à la fin de reply : transaction, cities, districts, types, budget, bedroomsMin, mustHave ou other. Utilise none si tu ne poses aucune question. Le serveur rattache cette question au mode courant pour interpréter la prochaine réponse.
@@ -51,6 +52,22 @@ function chat_distance_km(float $lat1, float $lon1, float $lat2, float $lon2): f
     $dLon = $rad($lon2 - $lon1);
     $a = sin($dLat / 2) ** 2 + cos($rad($lat1)) * cos($rad($lat2)) * sin($dLon / 2) ** 2;
     return 6371 * 2 * asin(sqrt($a));
+}
+
+/** Un lieu demandé comme quartier peut aussi être le nom de la ville dans le catalogue. */
+function chat_matches_location(array $requested, array $locations): bool
+{
+    $locations = array_map(static fn($value): string => mb_strtolower(trim((string) $value)), $locations);
+    foreach ($requested as $location) {
+        $value = mb_strtolower(trim((string) $location));
+        if ($value !== '' && in_array($value, $locations, true)) return true;
+    }
+    return false;
+}
+
+function chat_matches_district(array $districts, array $property): bool
+{
+    return chat_matches_location($districts, [$property['district'] ?? '', $property['city'] ?? '']);
 }
 
 /** Charge toutes les annonces visibles qui correspondent au type et aux critères de cette requête. */
@@ -101,11 +118,11 @@ function chat_candidates_for_search(array $user, array $profile, ?array $positio
             $filterCounts['transactionFiltered']++;
             continue;
         }
-        if ($cities && !in_array($property['city'] ?? '', $cities, true)) {
+        if ($cities && !chat_matches_location($cities, [$property['city'] ?? ''])) {
             $filterCounts['cityFiltered']++;
             continue;
         }
-        if ($districts && !in_array($property['district'] ?? '', $districts, true)) {
+        if ($districts && !chat_matches_district($districts, $property)) {
             $filterCounts['districtFiltered']++;
             continue;
         }
@@ -194,12 +211,16 @@ function chat_classify_turn(Client $client, string $message, array $history, arr
     $instructions = <<<'TXT'
 Tu classes le dernier message immobilier Selix avec l'état fourni par le serveur. Comprends français, anglais, espagnol, arabe et darija (y compris Arabizi).
 GENERAL_SEARCH : nouvelle exploration du catalogue, nouveau type ou nouvelle recherche indépendante. Exemples : « et les villas ? », « w lvilat », « quels bureaux sont disponibles ? ». Les critères sont temporaires. Une simple précision de la recherche active n'est PAS une nouvelle recherche.
+Si le client demande de voir les biens d'un type en général, par exemple « les villas li kaynin » ou « toutes les villas », utilise GENERAL_SEARCH même si ce type est déjà actif : ne conserve pas l'ancien lieu ni les anciens autres critères. Une demande d'un lieu précis comme « f Anfa 5 » précise le lieu actuel. Ne confonds jamais Anfa et Anfa 5 : ce sont deux quartiers différents dans le catalogue. Anfa 5 est un quartier de Dar Bouazza.
+Une demande générale sans ancien lieu ouvre une nouvelle exploration ; une précision comme « et celles à Souissi ? » reste une continuation avec le nouveau lieu. Ne recopie pas l'ancienne ville ou l'ancien quartier dans criteria pour compléter un nouveau lieu.
+Pendant une recherche temporaire, tout type nouveau cité dans le message ouvre une nouvelle recherche, même avec « aussi » : extrais seulement les types et critères de ce message, sans reprendre ceux de la recherche précédente. Plusieurs types cités ensemble appartiennent à cette nouvelle recherche.
 PROFILE_UPDATE : modification de préférences durables, lorsque le client est dans mode=profile_edit, ou qu'il demande EXPLICITEMENT de mémoriser/enregistrer/changer son profil. « Désormais je veux seulement acheter », « retiens que mon budget est... » sont explicites. Mentionner « achat », « mon budget est... » ou « je veux... » pendant une recherche temporaire ne constitue PAS une demande durable.
 CONTINUATION : réponse à lastQuestion, précision/correction de la recherche active, demande sur un bien proposé ou conversation générale. La destination reste celle de lastQuestion.target, sinon du mode actif. « Achat » après une question achat/location concernant les villas est CONTINUATION, criteria.transaction=achat, explicitProfileUpdate=false. « Rabat », « avec piscine », « 6 millions » après une question correspondante suivent la même règle. Une phrase courte n'exige pas de confirmation.
 En mode=profile_edit, les changements de critères complètent le profil, MAIS une nouvelle exploration explicite ouvre GENERAL_SEARCH. Si forceNextProfileEdit=true, le prochain message appartient au profil, même s'il nomme un nouveau type.
 En cas d'ambiguïté entre profil durable et recherche temporaire, choisis CONTINUATION si une exploration est active, sinon GENERAL_SEARCH. Ne demande aucune confirmation de destination.
 criteria ne contient QUE les champs explicitement exprimés, corrigés ou supprimés par le message actuel. N'y recopie jamais tous les critères de l'historique ni du profil. Les réponses elliptiques utilisent le champ de lastQuestion.field. Les valeurs de temporaryCriteria déjà acquises sont fusionnées par le serveur. Ne déduis jamais achat/location d'un montant. « 6 millions de dirhams »=6000000 MAD ; si l'unité dirhams/centimes est ambiguë, n'invente pas la conversion.
 Valeurs canoniques : transaction=achat|location ; types=appartement|villa|studio|riad|bureau|terrain ; villes/quartiers avec l'orthographe du catalogue (Casablanca, Marrakech, Rabat, Maârif...). mustHave utilise piscine, jardin, parking, meublé, vue mer, terrasse, ascenseur, sécurité, climatisation, balcon. Supprimer un filtre numérique/transaction = null ; supprimer une liste = []. Les champs non mentionnés sont ABSENTS, pas vides ni null. Une négation doit être comprise, pas inversée : « pas besoin de piscine » retire cette exigence, « pas de piscine » n'impose pas piscine. nearMe est seulement true/false si demandé ou annulé explicitement.
+Dans le catalogue, Bouskoura est une ville : classe-la dans cities, pas dans districts. Ville Verte est un quartier de Bouskoura.
 explicitProfileUpdate est true uniquement si le dernier message demande explicitement une modification durable ; le mode profil seul ne le rend pas true. Pour les salutations et les questions sans critère, criteria={}.
 mustHave ajoute les équipements exprimés aux exigences actives ; [] efface toutes ces exigences. Pour retirer seulement un équipement, utilise removeMustHave : « pas besoin de piscine » donne removeMustHave=["piscine"], sans supprimer les autres équipements.
 TXT;
@@ -266,6 +287,14 @@ function handle_chat(array $user): array
     if (!is_array($savedProfile)) $savedProfile = [];
     $queryProfile = $typeExploration ? $turn['criteria'] : $savedProfile;
     if ($turn['allowProfileUpdate']) $queryProfile = chat_merge_criteria($savedProfile, $turn['profilePatch']);
+    if ($typeExploration) {
+        $extracted = chat_normalize_criteria($classification['criteria'] ?? []);
+        $locationFields = ['types', 'cities', 'districts'];
+        error_log('[Selix exploration criteria] extracted='
+            . (json_encode(array_intersect_key($extracted, array_flip($locationFields)), JSON_UNESCAPED_UNICODE) ?: '{}')
+            . ' active='
+            . (json_encode(array_intersect_key($queryProfile, array_flip($locationFields)), JSON_UNESCAPED_UNICODE) ?: '{}'));
+    }
     $position = is_array($in['position'] ?? null) ? $in['position'] : null;
     if ($typeExploration) {
         $candidates = chat_candidates_for_search($user, $queryProfile, $position, !empty($queryProfile['nearMe']));
@@ -342,41 +371,8 @@ function handle_chat(array $user): array
 
     $allowed = array_flip(array_map(fn($c) => (string) ($c['id'] ?? ''), $candidates));
     $ids = array_values(array_filter($data['propertyIds'] ?? [], fn($id) => is_string($id) && isset($allowed[$id])));
-    // En exploration, afficher d'abord jusqu'à trois annonces trouvées, même si le modèle pose une question de précision.
-    if ($typeExploration && $candidates) {
-        $ids = array_slice(array_values(array_filter(
-            array_map(static fn(array $candidate): string => (string) ($candidate['id'] ?? ''), $candidates),
-            static fn(string $id): bool => $id !== '',
-        )), 0, 3);
-    }
     $reply = $data['reply'];
     $questionField = (string) ($data['questionField'] ?? 'none');
-    if ($typeExploration && $ids && empty($data['propertyIds'])) {
-        // Le LLM a demandé une précision avant de choisir des IDs; affiche d'abord les biens trouvés.
-        $questionField = empty($queryProfile['transaction']) ? 'transaction' : (empty($queryProfile['cities']) ? 'cities' : 'none');
-        $explorationReplies = [
-            'fr' => 'Voici quelques biens disponibles. Vous préférez acheter ou louer ?',
-            'en' => 'Here are some available properties. Would you prefer to buy or rent?',
-            'ar' => 'هذه بعض العقارات المتاحة. هل تفضل الشراء أم الكراء؟',
-            'es' => 'Estos son algunos inmuebles disponibles. ¿Prefieres comprar o alquilar?',
-        ];
-        if ($questionField === 'cities') {
-            $explorationReplies = [
-                'fr' => 'Voici quelques biens disponibles. Dans quelle ville souhaitez-vous chercher ?',
-                'en' => 'Here are some available properties. Which city would you like to search in?',
-                'ar' => 'هذه بعض العقارات المتاحة. في أي مدينة تريد البحث؟',
-                'es' => 'Estos son algunos inmuebles disponibles. ¿En qué ciudad quieres buscar?',
-            ];
-        } elseif ($questionField === 'none') {
-            $explorationReplies = [
-                'fr' => 'Voici quelques biens correspondant à cette recherche.',
-                'en' => 'Here are some properties matching this search.',
-                'ar' => 'هذه بعض العقارات المطابقة لهذا البحث.',
-                'es' => 'Estos son algunos inmuebles que coinciden con esta búsqueda.',
-            ];
-        }
-        $reply = $explorationReplies[$data['replyLanguage'] ?? 'fr'] ?? $explorationReplies['fr'];
-    }
     if ($questionField === 'none' && preg_match('/[?؟]/u', $reply)) $questionField = 'other';
     $committed = chat_commit_turn((string) $user['id'], $turn, $reply, $questionField);
     $out = [

@@ -8,7 +8,7 @@ import {
   useAudioPlayer,
   useAudioPlayerStatus,
 } from 'expo-audio';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -137,6 +137,14 @@ export default function Assistant() {
     at: 0,
   };
   const messages = [welcome, ...chat];
+  const latestMessage = chat[chat.length - 1];
+  const latestAssistantId = latestMessage?.role === 'assistant' ? latestMessage.id : null;
+
+  useEffect(() => {
+    if (!latestAssistantId) return;
+    const frame = requestAnimationFrame(() => list.current?.scrollToEnd({ animated: true }));
+    return () => cancelAnimationFrame(frame);
+  }, [latestAssistantId]);
 
   function scrollToLatestIfFollowing() {
     if (followingLatest.current && !scrollGestureActive.current) {
@@ -241,7 +249,7 @@ export default function Assistant() {
               const distanceToBottom =
                 contentSize.height - layoutMeasurement.height - contentOffset.y;
 
-              followingLatest.current = distanceToBottom <= 100;
+              followingLatest.current = distanceToBottom <= 250;
             }}
             onScrollBeginDrag={() => {
               scrollGestureActive.current = true;
