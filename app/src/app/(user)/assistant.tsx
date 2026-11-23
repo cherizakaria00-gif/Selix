@@ -8,8 +8,7 @@ import {
   useAudioPlayer,
   useAudioPlayerStatus,
 } from 'expo-audio';
-import { useRef, useState } from 'react';
-import { useLocalSearchParams } from 'expo-router';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -114,10 +113,6 @@ function AudioPlayback({ uri }: { uri: string }) {
 
 export default function Assistant() {
   const { user, chat, sendMessage, sendAudioMessage, thinking, properties, profile, score } = useApp();
-  const { profileEdit } = useLocalSearchParams<{ profileEdit?: string }>();
-  const profileEditMode = profileEdit === '1';
-  // Le premier message après le bouton est maintenant forcé côté serveur ; les suivants sont classifiés normalement.
-  const forceFirstProfileEdit = useRef(profileEditMode);
   const [text, setText] = useState('');
   const recorder = useAudioRecorder({ ...RecordingPresets.HIGH_QUALITY, isMeteringEnabled: true, directory: 'document' });
   const recorderState = useAudioRecorderState(recorder, 100);
@@ -142,6 +137,14 @@ export default function Assistant() {
     at: 0,
   };
   const messages = [welcome, ...chat];
+  const latestMessage = chat[chat.length - 1];
+  const latestAssistantId = latestMessage?.role === 'assistant' ? latestMessage.id : null;
+
+  useEffect(() => {
+    if (!latestAssistantId) return;
+    const frame = requestAnimationFrame(() => list.current?.scrollToEnd({ animated: true }));
+    return () => cancelAnimationFrame(frame);
+  }, [latestAssistantId]);
 
   function scrollToLatestIfFollowing() {
     if (followingLatest.current && !scrollGestureActive.current) {
@@ -163,9 +166,7 @@ export default function Assistant() {
         await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
         setText('');
         Keyboard.dismiss();
-        const forceProfileEdit = forceFirstProfileEdit.current;
-        await sendAudioMessage(uri, profileEditMode, forceProfileEdit);
-        if (forceProfileEdit) forceFirstProfileEdit.current = false;
+        await sendAudioMessage(uri);
       } catch (error) {
         setAudioMessage(error instanceof Error ? error.message : 'Impossible de traiter cet enregistrement.');
         await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true }).catch(() => undefined);
@@ -178,9 +179,7 @@ export default function Assistant() {
     if (!value.trim()) return;
     setText('');
     Keyboard.dismiss();
-    const forceProfileEdit = forceFirstProfileEdit.current;
-    await sendMessage(value.trim(), profileEditMode, forceProfileEdit);
-    if (forceProfileEdit) forceFirstProfileEdit.current = false;
+    await sendMessage(value.trim());
   }
 
   async function toggleAudioRecording() {
@@ -250,7 +249,7 @@ export default function Assistant() {
               const distanceToBottom =
                 contentSize.height - layoutMeasurement.height - contentOffset.y;
 
-              followingLatest.current = distanceToBottom <= 100;
+              followingLatest.current = distanceToBottom <= 250;
             }}
             onScrollBeginDrag={() => {
               scrollGestureActive.current = true;

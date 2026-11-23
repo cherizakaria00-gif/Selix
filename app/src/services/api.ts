@@ -14,7 +14,7 @@ import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
 import type { Coords } from '@/services/geo';
-import type { Approval, ChatMessage, Lead, Profile, Property, PropertyStats, StaffRole, Swipe, SwipeAction, User } from '@/types';
+import type { Approval, ChatMessage, ConversationCategory, ConversationContext, Lead, Profile, Property, PropertyStats, SearchCriteria, StaffRole, Swipe, SwipeAction, User } from '@/types';
 
 export const API_URL = (process.env.EXPO_PUBLIC_SELIX_API_URL ?? '').replace(/\/+$/, '');
 
@@ -281,6 +281,14 @@ export async function saveChat(_userId: string, messages: ChatMessage[]) {
   await request('PUT', '/me/chat', { data: messages.slice(-100) });
 }
 
+export function getConversationContext(): Promise<ConversationContext | null> {
+  return cachedGet<ConversationContext | null>('/chat/context', null);
+}
+
+export function beginProfileEditing(): Promise<ConversationContext> {
+  return request<ConversationContext>('POST', '/chat/profile-edit', {});
+}
+
 export function getSeenPropertyIds(_userId: string): Promise<string[] | null> {
   return cachedGet<string[] | null>('/me/seen', null);
 }
@@ -298,23 +306,18 @@ export async function registerPushToken(pushToken: string) {
 export type ChatRequest = {
   message: string;
   history: { role: ChatMessage['role']; text: string }[];
-  profile: Profile;
-  candidates: Record<string, unknown>[];
-  /** Seul le bouton du profil peut demander explicitement une mise à jour du profil. */
-  conversationMode?: 'chat' | 'profile_edit';
-  /** Premier message suivant le clic : force l'application des critères au profil. */
-  forceProfileEdit?: boolean;
-  /** Critères explicites de la recherche courante, sans héritage du profil sauvegardé. */
-  queryCriteria?: Profile;
   position?: Coords;
-  nearMe?: boolean;
 };
 
 export type ChatResponse = {
   reply: string;
   propertyIds?: string[];
-  needs?: Record<string, unknown>;
+  needs?: SearchCriteria;
   intent?: 'exploration' | 'chat' | 'profile_edit';
+  category?: ConversationCategory;
+  allowProfileUpdate?: boolean;
+  conversationContext?: ConversationContext;
+  profile?: Profile;
 };
 
 /** Assistant Claude, appelé par le serveur (la clé API n'est jamais dans l'app). */

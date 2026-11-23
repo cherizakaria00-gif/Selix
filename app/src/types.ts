@@ -90,6 +90,31 @@ export type Profile = {
   radiusKm: number;
 };
 
+/** Critères explicites d'une recherche ; null ou [] permettent d'enlever un filtre. */
+export type SearchCriteria = {
+  removeMustHave?: string[];
+  transaction?: Transaction | null;
+  cities?: string[];
+  districts?: string[];
+  types?: PropertyType[];
+  budgetMin?: number | null;
+  budgetMax?: number | null;
+  bedroomsMin?: number | null;
+  mustHave?: string[];
+  nearMe?: boolean;
+};
+
+export type ConversationCategory = 'GENERAL_SEARCH' | 'PROFILE_UPDATE' | 'CONTINUATION';
+export type ConversationMode = 'chat' | 'general_search' | 'profile_edit';
+export type ConversationContext = {
+  version: 1;
+  mode: ConversationMode;
+  temporaryCriteria: SearchCriteria;
+  lastCategory?: ConversationCategory;
+  lastQuestion: { text: string; target: ConversationMode; field: string } | null;
+  forceNextProfileEdit?: boolean;
+};
+
 export type LeadStatus = 'nouveau' | 'contacté' | 'visite planifiée' | 'clôturé';
 
 export type Lead = {

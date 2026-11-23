@@ -12,6 +12,7 @@ ini_set('display_errors', '0');
 require __DIR__ . '/vendor/autoload.php';
 require __DIR__ . '/src/lib.php';
 require __DIR__ . '/src/push.php';
+require __DIR__ . '/src/chat-context.php';
 require __DIR__ . '/src/chat.php';
 require __DIR__ . '/src/transcribe.php';
 require __DIR__ . '/src/spaces.php';
@@ -546,6 +547,13 @@ function route(string $method, string $path): mixed
 
         case ['POST', 'chat', 1]:
             return handle_chat(require_user());
+
+        case ['GET', 'chat', 2]:
+            if ($id === 'context') return chat_context_response(chat_load_context((string) require_user()['id']));
+            break;
+        case ['POST', 'chat', 2]:
+            if ($id === 'profile-edit') return chat_begin_profile_edit((string) require_user()['id']);
+            break;
 
         // Ajout de la transcription audio, avec la même authentification que le chat.
         case ['POST', 'transcribe', 1]:

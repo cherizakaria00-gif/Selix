@@ -7,6 +7,7 @@ import {
   applyNeeds,
   askAssistant,
   emptyProfile,
+  emptyConversationContext,
   learnFromSwipe,
   normalizeProfile,
   parseNeeds,
@@ -26,7 +27,7 @@ import {
   syncBackgroundGeofences,
   type BackgroundStatus,
 } from '@/services/proximity';
-import type { Approval, ChatMessage, Lead, Profile, Property, PropertyStats, Role, Swipe, SwipeAction, User, VisitStatus } from '@/types';
+import type { Approval, ChatMessage, ConversationContext, Lead, Profile, Property, PropertyStats, Role, Swipe, SwipeAction, User, VisitStatus } from '@/types';
 
 type RegisterInput = Omit<User, 'id' | 'role' | 'createdAt'> & { needs?: string; profile?: Partial<Profile> };
 
@@ -41,6 +42,7 @@ type AppState = {
   stats: PropertyStats[];
   profile: Profile;
   chat: ChatMessage[];
+  conversationContext: ConversationContext;
   thinking: boolean;
   position: Coords | null;
   locationGranted: boolean;
@@ -59,9 +61,10 @@ type AppState = {
   deleteAccount: () => Promise<void>;
   swipe: (propertyId: string, action: SwipeAction) => Promise<void>;
   resetSwipes: () => Promise<void>;
-  sendMessage: (text: string, profileEditMode?: boolean, forceProfileEdit?: boolean) => Promise<void>;
+  beginProfileEditing: () => Promise<void>;
+  sendMessage: (text: string) => Promise<void>;
   /** Enregistre d'abord le message audio, puis le transcrit et l'envoie à l'assistant. */
-  sendAudioMessage: (audioUri: string, profileEditMode?: boolean, forceProfileEdit?: boolean) => Promise<void>;
+  sendAudioMessage: (audioUri: string) => Promise<void>;
   updateProfile: (patch: Partial<Profile>) => Promise<void>;
   enableLocation: () => Promise<boolean>;
   /** À appeler seulement après l'écran d'explication du profil. */
@@ -111,6 +114,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Copie synchrone du profil : plusieurs swipes rapides ne doivent pas s'écraser.
   const profileRef = useRef<Profile>(profile);
   const [chat, setChat] = useState<ChatMessage[]>([]);
+  const [conversationContext, setConversationContext] = useState<ConversationContext>(emptyConversationContext);
   const [thinking, setThinking] = useState(false);
   const [position, setPosition] = useState<Coords | null>(null);
   const [locationGranted, setLocationGranted] = useState(false);
@@ -151,10 +155,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   async function loadUser(u: User) {
     setUser(u);
-    const [p, c] = await Promise.all([api.getProfile(u.id), api.getChat(u.id), loadShared(u.role)]);
+    const [p, c, context] = await Promise.all([
+      api.getProfile(u.id), api.getChat(u.id), api.getConversationContext().catch(() => null), loadShared(u.role),
+    ]);
     profileRef.current = normalizeProfile(p);
     setProfile(profileRef.current);
     setChat(c);
+    setConversationContext(context ?? emptyConversationContext());
     if (u.role === 'user' && Platform.OS !== 'web') {
       setLocationGranted(await getForegroundPermission());
       if (await setupNotifications()) {
@@ -285,6 +292,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     profileRef.current = emptyProfile();
     setProfile(profileRef.current);
     setChat([]);
+    setConversationContext(emptyConversationContext());
     setPosition(null);
     setStats([]);
     setUsers([]);
@@ -301,6 +309,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     stats,
     profile,
     chat,
+    conversationContext,
     thinking,
     position,
     locationGranted,
@@ -359,14 +368,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setSwipes(await api.clearSwipes(user.id).catch((e) => (alertError(e), swipes)));
     },
 
-    async sendMessage(text, profileEditMode = false, forceProfileEdit = false) {
-      if (!user || !text.trim()) return;
+    async beginProfileEditing() {
+      if (!user || thinking) throw new Error('Attendez la fin du message en cours.');
+      setConversationContext(await api.beginProfileEditing());
+    },
+
+    async sendMessage(text) {
+      if (!user || thinking || !text.trim()) return;
       const userMsg: ChatMessage = { id: api.uid('m'), role: 'user', text: text.trim(), at: Date.now() };
       const history = [...chat, userMsg];
       setChat(history);
       setThinking(true);
       try {
-        const out = await askAssistant({ text, history: chat, profile, properties, dislikedIds, position, profileEditMode, forceProfileEdit });
+        const out = await askAssistant({ text, history: chat, profile: profileRef.current, properties, dislikedIds, position, conversationContext });
+        if (out.conversationContext) setConversationContext(out.conversationContext);
+        if (out.allowProfileUpdate) {
+          profileRef.current = normalizeProfile(out.profile);
+          setProfile(profileRef.current);
+        }
         const reply: ChatMessage = {
           id: api.uid('m'),
           role: 'assistant',
@@ -377,15 +396,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const next = [...history, reply];
         setChat(next);
         await api.saveChat(user.id, next).catch(() => undefined);
-        await persistProfile(out.profile);
       } finally {
         setThinking(false);
       }
     },
 
     // Nouvelle procédure audio : le message visible contient l'URI audio; sa transcription sert au LLM.
-    async sendAudioMessage(audioUri, profileEditMode = false, forceProfileEdit = false) {
-      if (!user) return;
+    async sendAudioMessage(audioUri) {
+      if (!user || thinking) return;
       const userMsg: ChatMessage = { id: api.uid('m'), role: 'user', text: '', audioUri, at: Date.now() };
       const visibleHistory = [...chat, userMsg];
       // La bulle apparaît avant d'attendre la transcription et la réponse du modèle.
@@ -398,7 +416,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const historyWithTranscript = [...chat, { ...userMsg, text: transcript }];
         persistableHistory = historyWithTranscript;
         setChat(historyWithTranscript);
-        const out = await askAssistant({ text: transcript, history: chat, profile, properties, dislikedIds, position, profileEditMode, forceProfileEdit });
+        const out = await askAssistant({ text: transcript, history: chat, profile: profileRef.current, properties, dislikedIds, position, conversationContext });
+        if (out.conversationContext) setConversationContext(out.conversationContext);
+        if (out.allowProfileUpdate) {
+          profileRef.current = normalizeProfile(out.profile);
+          setProfile(profileRef.current);
+        }
         const reply: ChatMessage = {
           id: api.uid('m'),
           role: 'assistant',
@@ -409,7 +432,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const next = [...historyWithTranscript, reply];
         setChat(next);
         await api.saveChat(user.id, next).catch(() => undefined);
-        await persistProfile(out.profile);
       } catch (error) {
         await api.saveChat(user.id, persistableHistory).catch(() => undefined);
         throw error;

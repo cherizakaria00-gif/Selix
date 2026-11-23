@@ -13,7 +13,7 @@
  */
 import { API_URL, postChat } from '@/services/api';
 import { distanceKm, type Coords } from '@/services/geo';
-import type { ChatMessage, Profile, Property, PropertyType, SwipeAction, Transaction } from '@/types';
+import type { ChatMessage, ConversationContext, Profile, Property, PropertyType, SwipeAction, Transaction } from '@/types';
 import { formatCompact } from '@/utils/format';
 
 export function emptyProfile(): Profile {
@@ -26,6 +26,10 @@ export function emptyProfile(): Profile {
     notifyNearby: true,
     radiusKm: 2,
   };
+}
+
+export function emptyConversationContext(): ConversationContext {
+  return { version: 1, mode: 'chat', temporaryCriteria: {}, lastQuestion: null };
 }
 
 function normalizeLearned(value: unknown): Profile['learned'] {
@@ -424,16 +428,15 @@ export type AssistantInput = {
   properties: Property[];
   dislikedIds: Set<string>;
   position?: Coords | null;
-  /** Activé uniquement depuis « Modifier avec l’assistant » dans le profil. */
-  profileEditMode?: boolean;
-  /** Force seulement le premier message après le clic à mettre à jour le profil. */
-  forceProfileEdit?: boolean;
+  conversationContext: ConversationContext;
 };
 
 export type AssistantOutput = {
   reply: string;
   propertyIds: string[];
   profile: Profile;
+  allowProfileUpdate?: boolean;
+  conversationContext?: ConversationContext;
 };
 
 /** Toute demande qui change le type est temporaire et ne modifie pas le profil enregistré. */
@@ -485,48 +488,30 @@ export async function askAssistant(input: AssistantInput): Promise<AssistantOutp
 
 /**
  * Contrat du serveur (POST {EXPO_PUBLIC_SELIX_API_URL}/chat, voir selix-api/src/chat.php) :
- *   requête : { message, history, profile, candidates: [{ id, score, ... }] }
- *   réponse : { reply: string, propertyIds: string[], needs?: Partial<Needs> }
- * Le moteur local pré-classe les biens : Claude choisit parmi ces candidats.
+ *   requête : { message, history, position? }
+ *   réponse : { reply, propertyIds, category, conversationContext, profile? }
+ * Le serveur conserve le contexte, sélectionne les biens et contrôle les écritures du profil.
  */
 async function askRemote(input: AssistantInput): Promise<AssistantOutput> {
-  const needs = parseNeeds(input.text);
-  const profileEditMode = Boolean(input.profileEditMode);
-  const queryProfile = profileEditMode ? applyNeeds(input.profile, needs) : input.profile;
-  // Le serveur classifie le message avant de choisir entre la requête complète et les suggestions classées.
-  const queryCriteria = applyNeeds(emptyProfile(), needs);
-  const candidates = rankProperties(queryProfile, input.properties, { position: input.position })
-    .filter((s) => s.property.status === 'disponible')
-    .map(({ property: p, score, distance }) => ({
-      id: p.id, title: p.title, transaction: p.transaction, type: p.type, city: p.city,
-      district: p.district, price: p.price, bedrooms: p.bedrooms, surface: p.surface, features: p.features,
-      score: score - (input.dislikedIds.has(p.id) ? 100 : 0),
-      ...(distance !== undefined ? { distanceKm: Math.round(distance * 10) / 10 } : null),
-    }))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 15);
   const data = await postChat({
     message: input.text,
     history: input.history.slice(-10).map(({ role, text }) => ({ role, text })),
-    profile: queryProfile,
-    candidates,
-    conversationMode: profileEditMode ? 'profile_edit' : 'chat',
-    forceProfileEdit: Boolean(input.forceProfileEdit),
-    queryCriteria,
     position: input.position ?? undefined,
-    nearMe: needs.nearMe,
   });
-  // Ne sauvegarder que si le classifieur considère ce message comme une modification du profil.
-  const merged = data.intent === 'profile_edit' && (data.needs || input.forceProfileEdit)
-    ? applyNeeds(queryProfile, { ...parseNeeds(''), ...(data.needs as Partial<Needs>) })
-    : input.profile;
-  return { reply: data.reply, propertyIds: data.propertyIds ?? [], profile: merged };
+  // Le serveur a déjà sauvegardé le profil si et seulement si la destination le permet.
+  return {
+    reply: data.reply,
+    propertyIds: data.propertyIds ?? [],
+    profile: data.allowProfileUpdate && data.profile ? normalizeProfile(data.profile) : input.profile,
+    allowProfileUpdate: Boolean(data.allowProfileUpdate && data.profile),
+    conversationContext: data.conversationContext,
+  };
 }
 function askLocal(input: AssistantInput): AssistantOutput {
   const { text, history, properties, dislikedIds, position } = input;
   const needs = parseNeeds(text);
-  // Les critères explicites du message mettent à jour le profil enregistré.
-  const next = input.profileEditMode ? applyNeeds(input.profile, needs) : input.profile;
+  // Le secours local peut suggérer des biens, mais ne modifie jamais le profil durable.
+  const next = input.profile;
   const understood =
     needs.transaction || needs.cities.length || needs.types.length || needs.budgetMax ||
     needs.budgetMin || needs.bedroomsMin || needs.mustHave.length;
@@ -539,7 +524,7 @@ function askLocal(input: AssistantInput): AssistantOutput {
     };
   }
 
-  if (!input.forceProfileEdit && (isExplicitCatalogExploration(text, needs) || isTypeExploration(input.profile, needs))) {
+  if (isExplicitCatalogExploration(text, needs) || isTypeExploration(input.profile, needs)) {
     const requestedType = needs.types[0];
     const typeLabel: Record<PropertyType, string> = {
       appartement: 'appartements', villa: 'villas', studio: 'studios',

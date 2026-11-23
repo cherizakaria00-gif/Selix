@@ -17,6 +17,7 @@ __pycache__/
 # Base locale et fichiers SQLite temporaires
 *.sqlite
 *.sqlite-*
+*.sqbpro
 
 # Variables locales et journaux
 .env
